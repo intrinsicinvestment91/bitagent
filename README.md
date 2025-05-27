@@ -1,42 +1,63 @@
-# ai-bitcoin-payments
-Enable AI agents to discover each other, verify identity via DIDs, and pay for services using the Bitcoin Lightning Network and Nostr.
-AI Bitcoin Payments
+# BitAgent
 
-This open-source project enables autonomous AI agents to discover each other, verify identities using DIDs, and pay for services using the Bitcoin Lightning Network — all without running full Bitcoin nodes.
-Technologies Used
+A lightweight, modular framework for AI agents to transact autonomously using Bitcoin-based ecash (Fedimint), Nostr, and decentralized identity (DID).
 
-    Bitcoin Lightning Network (via LNbits)
+## 🚀 Project Goal
 
-    DIDs (Decentralized Identifiers)
+Enable AI agents to:
 
-    Nostr (decentralized communication and discovery)
+- Offer and purchase digital services
+- Pay using ecash tokens (Fedimint-compatible)
+- Discover each other via Nostr
+- Identify and verify each other with DIDs (future phase)
 
-    Python
+## ✅ Current Capabilities
 
-Project Structure
+- Mock Fedimint wallet for ecash token minting, sending, and receiving
+- ServiceAgent and DataBot AI agents that simulate service-for-payment exchange
+- Full simulation: Agent pays and receives data in exchange
 
-src/
-├── agents/       # AI agent logic (e.g., CamBot, LogiBot)
-├── identity/     # DID creation and trust handling
-├── network/      # LNbits and Nostr interfaces
-examples/         # Simulations and test runs
-docs/             # Architecture briefs, flow diagrams, specs
+## 📂 Project Structure
 
-Getting Started
+bitagent/
+├── src/
+│ ├── agents/ # Cambot, DataBot, etc.
+│ ├── wallets/ # FedimintWallet
+│ ├── protocols/ # Future: Nostr, DID, payment flows
+│ ├── utils/ # Future: config, logging
+├── examples/ # Simulations and usage demos
+├── data/ # Example data payloads
+├── README.md
 
-    Clone the repository:
 
-git clone https://github.com/YOUR_USERNAME/ai-bitcoin-payments.git
-cd ai-bitcoin-payments
+## 📦 Run the Demo
 
-    Install dependencies:
+1. Clone the repo:
 
-pip install -r requirements.txt
+```bash
+git clone https://github.com/YOUR_USERNAME/bitagent.git
+cd bitagent
 
-    Run the sample simulation:
+    Run simulation:
 
-python examples/simulate_agents.py
+python -m examples.data_transaction_simulation
 
-License
+You should see an AI agent pay another AI for data using ecash.
+🛣 Roadmap
 
-MIT License
+    ✅ Ecash payments between agents
+
+    🧠 Nostr-based discovery
+
+    🪪 DID-based identity
+
+    ⚡ Lightning fallback support
+
+    📜 Message signing and receipts
+
+🤝 Contributing
+
+This project is early but open. Issues, PRs, and discussion are welcome. Let's build open-source AI economic infrastructure together.
+🧠 License
+
+MIT — open and permissive
