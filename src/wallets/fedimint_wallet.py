@@ -1,27 +1,36 @@
 import uuid
-import json
 
 class FedimintWallet:
-    def __init__(self, wallet_id, federation_name="Test Federation"):
-        self.wallet_id = wallet_id
+    def __init__(self, wallet_id=None, federation_name="DefaultFed", owner=""):
+        self.wallet_id = wallet_id or str(uuid.uuid4())
         self.federation_name = federation_name
+        self.owner = owner
         self.balance = 0
         self.received_tokens = []
 
-    def mint_tokens(self, sats: int):
-        """Simulate minting ecash from BTC (mock only)."""
+    def mint_token(self, amount_sat: int) -> dict:
         token = {
             "token_id": str(uuid.uuid4()),
-            "amount_sat": sats,
-            "sender": self.wallet_id,
-            "redeemed": False
+            "amount_sat": amount_sat,
+            "sender": self.owner,
+            "redeemed": False,
         }
-        self.balance += sats
+        self.balance -= amount_sat
         return token
 
-    def receive_tokens(self, token):
-        """Accept ecash token from another agent."""
-        if not token["redeemed"]:
+    def accept_token(self, token: dict, required_amount: int) -> bool:
+        if token["amount_sat"] >= required_amount and not token.get("redeemed", False):
+            token["redeemed"] = True
+            self.balance += token["amount_sat"]
+            self.received_tokens.append(token)
+            return True
+        return False
+
+    def receive_tokens(self, token: dict) -> bool:
+        """
+        Accept ecash token from another agent.
+        """
+        if not token.get("redeemed", False):
             self.received_tokens.append(token)
             self.balance += token["amount_sat"]
             token["redeemed"] = True
@@ -37,5 +46,8 @@ class FedimintWallet:
             "wallet_id": self.wallet_id,
             "balance": self.balance,
             "federation": self.federation_name,
-            "tokens": self.received_tokens
+            "tokens": self.received_tokens,
         }
+
+    def __repr__(self):
+        return f"<FedimintWallet owner={self.owner} balance_sat={self.balance}>"
