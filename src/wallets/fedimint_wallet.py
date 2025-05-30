@@ -8,12 +8,13 @@ class FedimintWallet:
         self.balance = 0
         self.received_tokens = []
 
-    def mint_token(self, amount_sat: int) -> dict:
+    def mint_token(self, amount_sat: int, recipient: str = "unknown") -> dict:
         token = {
             "token_id": str(uuid.uuid4()),
             "amount_sat": amount_sat,
             "sender": self.owner,
-            "redeemed": False,
+            "recipient": recipient,
+            "redeemed": False
         }
         self.balance -= amount_sat
         return token
@@ -26,7 +27,7 @@ class FedimintWallet:
             return True
         return False
 
-    def receive_tokens(self, token: dict) -> bool:
+    def redeem_token(self, token: dict) -> bool:
         """
         Accept ecash token from another agent.
         """
@@ -46,7 +47,7 @@ class FedimintWallet:
             "wallet_id": self.wallet_id,
             "balance": self.balance,
             "federation": self.federation_name,
-            "tokens": self.received_tokens,
+            "tokens": self.received_tokens
         }
 
     def __repr__(self):
