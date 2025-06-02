@@ -2,3 +2,4 @@ pycache/
 *.pyc
 .env
 *.log
+config.py

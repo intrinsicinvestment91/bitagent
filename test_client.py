@@ -1,7 +1,7 @@
 from lnbits_client import LNbitsClient
 
-api_key = "b9f4d7da522e46df9e2de13af4dbd17a"
-api_base = "https://demo.lnbits.com"  # Or your LNbits instance
+from lnbits_client import LNbitsClient
+from config import API_KEY, API_BASE
 
 client = LNbitsClient(api_key, api_base)
 
