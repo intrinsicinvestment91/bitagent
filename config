@@ -1,0 +1,14 @@
+from lnbits_client import LNbitsClient
+
+api_key = "b9f4d7da522e46df9e2de13af4dbd17a"
+api_base = "https://demo.lnbits.com"  # Or your LNbits instance
+
+client = LNbitsClient(api_key, api_base)
+
+wallet_info = client.get_wallet_info()
+if wallet_info:
+    print("Wallet Name:", wallet_info.get("name"))
+    print("Balance (sats):", wallet_info.get("balance"))
+    print("Wallet ID:", wallet_info.get("id"))
+        else:
+    print("❌ Failed to fetch wallet info.")
