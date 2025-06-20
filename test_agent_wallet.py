@@ -1,28 +1,49 @@
-from agent_wallet import get_wallet_id, get_balance, create_invoice, check_invoice_status
+import time
+from lnbits_client import LNbitsClient
 
-# Step 1: Test getting wallet ID and balance
+# Step 1: Initialize LNbits client
+API_KEY = "de3ebbe2caf64e4b95a7a6bdf4d8f6c2"
+BASE_URL = "https://demo.lnbits.com"
+client = LNbitsClient(API_KEY, BASE_URL)
+
+# Step 2: Get wallet info
 print("🔎 Fetching wallet info...")
-wallet_id = get_wallet_id()
-balance = get_balance()
+wallet_info = client.get_wallet_info()
 
-if wallet_id is not None:
+if wallet_info:
     print("✅ Wallet Info:")
-    print("  Wallet ID:", wallet_id)
-    print("  Balance (sats):", balance)
+    print("  🆔 ID:", wallet_info.get("id"))
+    print("  💰 Balance (sats):", wallet_info.get("balance"))
 else:
-    print("❌ Could not retrieve wallet info.")
+    print("❌ Failed to get wallet info.")
+    exit(1)
 
-# Step 2: Test invoice creation
-print("\n🧾 Creating test invoice for 1000 sats...")
-invoice = create_invoice(1000, memo="Test from test_agent_wallet.py")
+# Step 3: Create test invoice
+print("\n🧾 Creating invoice for 10 sats...")
+invoice = client.create_invoice(10, memo="Test from test_agent_wallet.py")
+
 if invoice:
-    print("✅ Invoice created:")
-    print("  Payment Request (bolt11):", invoice.get("bolt11"))
-    print("  Checking ID:", invoice.get("checking_id"))
+    # Try both common keys just in case
+    bolt11 = invoice.get("payment_request") or invoice.get("bolt11")
+    checking_id = invoice.get("checking_id")
 
-    # Step 3: Check invoice status
-    print("\n🔍 Checking status of created invoice...")
-    paid = check_invoice_status(invoice.get("checking_id"))
-    print("  Status:", "✅ PAID" if paid else "⏳ PENDING")
+    print("✅ Invoice created:")
+    print("  ⚡ bolt11:", bolt11)
+    print("  🔍 Checking ID:", checking_id)
 else:
     print("❌ Invoice creation failed.")
+    exit(1)
+
+# Step 4: Poll for payment status
+def wait_for_payment(checking_id):
+    print(f"\n🔄 Waiting for payment...")
+    while True:
+        paid = client.check_invoice(checking_id)
+        if paid:
+            print("✅ Invoice has been PAID!")
+            break
+        else:
+            print("⏳ Still pending... checking again in 10 seconds.")
+            time.sleep(10)
+
+wait_for_payment(checking_id)

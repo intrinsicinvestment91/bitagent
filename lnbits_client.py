@@ -1,7 +1,7 @@
 import requests
 
 class LNbitsClient:
-    def __init__(self, api_key, api_base="https://demo.lnbits.com"):
+    def __init__(self, api_key, api_base="https://legend.lnbits.com"):
         self.api_key = api_key
         self.api_base = api_base.rstrip("/")
         self.headers = {
@@ -19,7 +19,7 @@ class LNbitsClient:
             print("Response:", response.text)
             return None
 
-    def create_invoice(self, amount: int, memo: str = "LNbits Invoice") -> dict:
+    def create_invoice(self, amount: int, memo: str = ""):
         url = f"{self.api_base}/api/v1/payments"
         payload = {
             "out": False,
@@ -29,7 +29,7 @@ class LNbitsClient:
         response = requests.post(url, json=payload, headers=self.headers)
         if response.ok:
             invoice = response.json()
-            print("🧾 Invoice created:", invoice.get("payment_request"))
+            print("🧾 Invoice created:", invoice.get("bolt11"))
             return invoice
         else:
             print("❌ Failed to create invoice.")
