@@ -1,0 +1,20 @@
+{
+  "id": "did:bitagent:streamfinder01",
+  "name": "Streamfinder",
+  "description": "Returns movie/TV streaming platforms after LN payment.",
+  "public_key": "npub1example...", 
+  "methods": ["streamfinder.search"],
+  "payment": {
+    "currency": "sats",
+    "amount": 100,
+    "provider": "LNbits"
+  },
+  "endpoint": "http://localhost:8000/a2a",
+  "confirm_endpoint": "http://localhost:8000/confirm",
+  "tags": ["media", "search", "streaming"],
+  "version": "0.1",
+  "author": "BitAgent Project",
+  "nostr": {
+    "enabled": false
+  }
+}
