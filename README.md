@@ -104,6 +104,19 @@ Endpoint: POST /translate_audio (form-data with audio=yourfile.wav)
 
 🤝 Contributing
 
+## 🧠 Streamfinder Agent (A2A Compliant)
+
+Streamfinder is a modular agent that accepts Lightning payments and returns movie/TV streaming platform info via JSON-RPC.
+
+**Features:**
+- JSON-RPC over `/a2a`
+- Invoice generation + payment check via LNbits
+- Movie/TV search logic
+- `/confirm` endpoint to trigger result after payment
+
+**Note:** Other agents in this repo are not yet A2A-compatible and will need to be updated to support this modular JSON-RPC pattern.
+
+
 This project is early but open. Issues, PRs, and discussion are welcome. Let's build open-source AI economic infrastructure together.
 🧠 License
 
