@@ -3,3 +3,4 @@ pycache/
 .env
 *.log
 config.py
+.env

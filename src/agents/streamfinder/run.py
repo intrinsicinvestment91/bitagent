@@ -3,7 +3,8 @@
 import uvicorn
 import logging
 from fastapi import FastAPI, Request
-from src.agents.streamfinder import __init__ as agent_logic
+from src.agents.streamfinder import agent_logic
+
 
 app = FastAPI()
 logging.basicConfig(level=logging.INFO)
