@@ -4,3 +4,4 @@ pycache/
 *.log
 config.py
 .env
+venv/

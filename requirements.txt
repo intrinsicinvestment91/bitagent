@@ -1,4 +1,26 @@
+# Core dependencies
+fastapi
+uvicorn
+aiohttp
+python-multipart
+
+# LNbits integration
 requests
-python-nostr
 pylnbits
 cryptography
+python-dotenv
+
+# Language services
+deep-translator
+openai-whisper
+ffmpeg-python
+
+# Nostr discovery (via GitHub)
+git+https://github.com/jeffthibault/python-nostr.git
+
+# Optional testing utilities
+httpx
+requests
+pylnbits
+cryptography
+uvicorn
