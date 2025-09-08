@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  bitagent:
+    build: .
+    container_name: bitagent
+    ports:
+      - "8000:8000"
+    volumes:
+      - bitagent-data:/data
+      - ./logs:/app/logs
+    environment:
+      # LNbits Configuration
+      - LNBITS_URL=${LNBITS_URL}
+      - LNBITS_API_KEY=${LNBITS_API_KEY}
+      
+      # Start9 Configuration
+      - START9_NODE_ID=${START9_NODE_ID}
+      - HOST=0.0.0.0
+      - PORT=8000
+      
+      # Optional: Fedimint Configuration
+      - FEDIMINT_URL=${FEDIMINT_URL:-}
+      - FEDIMINT_API_KEY=${FEDIMINT_API_KEY:-}
+      
+      # Optional: Nostr Configuration
+      - NOSTR_PRIVATE_KEY=${NOSTR_PRIVATE_KEY:-}
+      
+      # Optional: Database
+      - DATABASE_URL=${DATABASE_URL:-sqlite:///data/bitagent.db}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  bitagent-data:
+    driver: local
