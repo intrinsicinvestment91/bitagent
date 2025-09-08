@@ -18,9 +18,16 @@ ffmpeg-python
 # Nostr discovery (via GitHub)
 git+https://github.com/jeffthibault/python-nostr.git
 
-# Optional testing utilities
+# Enhanced security and monitoring
+PyJWT
+psutil
+jsonschema
+
+# Testing utilities
 httpx
-requests
-pylnbits
-cryptography
+pytest
+pytest-asyncio
+pytest-mock
+
+# Optional dependencies
 uvicorn
