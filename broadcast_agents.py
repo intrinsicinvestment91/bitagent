@@ -18,14 +18,20 @@ AGENTS = [
     {
         "name": "PolyglotAgent",
         "description": "Translate and transcribe audio using LNbits",
-        "endpoint": "http://localhost:8000",
+        "endpoint": "http://localhost:8000/polyglot",
         "services": ["translate", "transcribe"]
     },
     {
-        "name": "CoordinatorAgent",
+        "name": "CoordinatorAgent", 
         "description": "Chains tasks between agents (e.g. translate_audio pipeline)",
-        "endpoint": "http://localhost:8001",
-        "services": ["translate_audio"]
+        "endpoint": "http://localhost:8000/coordinator",
+        "services": ["translate_audio", "chain_tasks"]
+    },
+    {
+        "name": "StreamfinderAgent",
+        "description": "Find streaming platforms for movies and TV shows",
+        "endpoint": "http://localhost:8000",
+        "services": ["streamfinder.search"]
     }
 ]
 
