@@ -1,24 +1,24 @@
 # src/agents/polyglot_agent/__init__.py
 
 import json
-from bitagent.core.payment import require_payment
-from bitagent.core.agent_server import agent_route
-from fastapi import APIRouter, HTTPException, Request
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+
+from core.payment import require_payment, log_request
+from core.agent_server import agent_route, create_agent_router
+from fastapi import APIRouter, HTTPException, Request, File, UploadFile
 from src.agents.polyglot_agent.polyglot_agent import PolyglotAgent
 
-# External dependencies (ensure these are installed in your venv)
-from deep_translator import GoogleTranslator
-import whisper
-
-router = APIRouter()
+# Create agent instance
 agent = PolyglotAgent()
 
-# Load Whisper model once
-model = whisper.load_model("base")
-
+# Create router with security
+router = create_agent_router(agent, prefix="/polyglot")
 
 @agent_route(router, "/translate", agent=agent)
-@require_payment(min_sats=100)
+@require_payment(min_sats=100, service_name="translation")
+@log_request
 async def translate(request: Request):
     """
     Translates text from one language to another.
@@ -33,41 +33,62 @@ async def translate(request: Request):
     except KeyError:
         raise HTTPException(status_code=400, detail="Missing one of: text, source_lang, target_lang")
 
-    try:
-        translated = GoogleTranslator(source=source, target=target).translate(text)
-        return {
-            "input": text,
-            "from": source,
-            "to": target,
-            "translated": translated
+    # Use agent's service processing
+    result = await agent.process_service_request(
+        "translate",
+        {
+            "text": text,
+            "source_lang": source,
+            "target_lang": target
         }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    )
+    
+    if result["status"] == "error":
+        raise HTTPException(status_code=500, detail=result["error"])
+    
+    return result["result"]
 
 
 @agent_route(router, "/transcribe", agent=agent)
-@require_payment(min_sats=250)
-async def transcribe(request: Request):
+@require_payment(min_sats=250, service_name="transcription")
+@log_request
+async def transcribe(request: Request, audio: UploadFile = File(...)):
     """
     Transcribes an uploaded audio file to text using OpenAI's Whisper.
     """
-    form = await request.form()
-    file = form.get("audio")
-
-    if not file:
+    if not audio:
         raise HTTPException(status_code=400, detail="Missing 'audio' file in form data")
 
-    audio_bytes = await file.read()
+    audio_bytes = await audio.read()
 
     try:
-        with open("temp_audio.wav", "wb") as f:
-            f.write(audio_bytes)
+        # Save to temporary file
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_file:
+            temp_file.write(audio_bytes)
+            temp_file_path = temp_file.name
 
-        result = model.transcribe("temp_audio.wav")
-        return {
-            "language": result.get("language"),
-            "transcription": result.get("text")
-        }
+        # Use agent's service processing
+        result = await agent.process_service_request(
+            "transcribe",
+            {
+                "audio_file_path": temp_file_path
+            }
+        )
+        
+        # Clean up temp file
+        os.unlink(temp_file_path)
+        
+        if result["status"] == "error":
+            raise HTTPException(status_code=500, detail=result["error"])
+        
+        return result["result"]
 
     except Exception as e:
+        # Clean up temp file if it exists
+        if 'temp_file_path' in locals():
+            try:
+                os.unlink(temp_file_path)
+            except:
+                pass
         raise HTTPException(status_code=500, detail=str(e))
