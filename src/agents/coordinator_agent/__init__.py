@@ -8,8 +8,15 @@ import logging
 # Add the project root to the path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
-from fastapi import APIRouter, File, UploadFile, HTTPException, Request
+from fastapi import APIRouter, File, UploadFile, HTTPException, Request, Depends
 from src.agents.coordinator_agent.coordinator_agent import CoordinatorAgent
+from src.security.secure_endpoints import (
+    require_authentication, 
+    require_payment, 
+    TaskChainRequest,
+    validate_file_upload,
+    sanitize_input
+)
 
 # Create agent instance
 agent = CoordinatorAgent()
@@ -31,15 +38,29 @@ async def get_services():
     }
 
 @router.post("/translate_audio")
-async def translate_audio(audio: UploadFile = File(...), target_language: str = "en"):
+@require_authentication(["read", "write"])
+@require_payment(min_sats=350, service_name="translate_audio")
+async def translate_audio(
+    request: Request,
+    audio: UploadFile = File(...), 
+    target_language: str = "en"
+):
     """
     Accepts an audio file, transcribes it via PolyglotAgent, then translates it.
     Returns both the transcription and translated text.
+    Requires authentication and payment.
     """
-    if not audio:
-        raise HTTPException(status_code=400, detail="Missing 'audio' file")
-
     try:
+        # Validate file upload
+        audio = validate_file_upload(audio, max_size=100 * 1024 * 1024)  # 100MB limit
+        
+        # Sanitize target language
+        target_language = sanitize_input(target_language, max_length=10)
+        
+        # Log the request
+        agent_id = getattr(request.state, 'agent_id', 'unknown')
+        logging.info(f"Audio translation request from agent {agent_id}: {audio.filename} -> {target_language}")
+        
         # Save the uploaded audio temporarily
         with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_audio:
             temp_audio.write(await audio.read())
@@ -53,6 +74,7 @@ async def translate_audio(audio: UploadFile = File(...), target_language: str = 
             )
             
             if "error" in result:
+                logging.error(f"Audio translation error: {result['error']}")
                 raise HTTPException(status_code=500, detail=result["error"])
             
             return result
@@ -63,32 +85,38 @@ async def translate_audio(audio: UploadFile = File(...), target_language: str = 
             except:
                 pass
 
+    except HTTPException:
+        raise
     except Exception as e:
         logging.error(f"Translate audio error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Audio translation service error")
 
 @router.post("/chain_tasks")
-async def chain_tasks(request: Request):
+@require_authentication(["read", "write"])
+@require_payment(min_sats=100, service_name="chain_tasks")
+async def chain_tasks(request: Request, task_request: TaskChainRequest):
     """
     Chain multiple tasks together.
-    Expects JSON with 'tasks' array containing service calls.
+    Requires authentication and payment.
     """
     try:
-        data = await request.json()
-        
-        if "tasks" not in data:
-            raise HTTPException(status_code=400, detail="Missing 'tasks' parameter")
+        # Log the request
+        agent_id = getattr(request.state, 'agent_id', 'unknown')
+        logging.info(f"Task chaining request from agent {agent_id}: {len(task_request.tasks)} tasks")
         
         # Use agent's service processing
-        result = await agent.handle_chain_tasks(data["tasks"])
+        result = await agent.handle_chain_tasks(task_request.tasks)
         
         if "error" in result:
+            logging.error(f"Task chaining error: {result['error']}")
             raise HTTPException(status_code=500, detail=result["error"])
         
         return result
+    except HTTPException:
+        raise
     except Exception as e:
         logging.error(f"Chain tasks error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Task chaining service error")
 
 # A2A compatible endpoints (like StreamfinderAgent)
 @router.post("/a2a")

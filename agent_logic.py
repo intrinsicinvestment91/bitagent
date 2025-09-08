@@ -2,9 +2,10 @@
 
 import json
 import logging
-from fastapi import Request
+from fastapi import Request, HTTPException
 from agent_wallet import AgentWallet
 from .streamfinder import StreamfinderAgent
+from src.security.secure_endpoints import sanitize_input
 
 # Initialize agent and wallet
 agent = StreamfinderAgent()
@@ -30,7 +31,23 @@ async def handle_a2a_request(request: Request):
         if not query:
             return {"error": "Missing 'query' parameter in request."}
 
-        # Create invoice
+        # Sanitize input
+        query = sanitize_input(query, max_length=500)
+        
+        # Check for payment hash
+        payment_hash = params.get("payment_hash")
+        
+        if payment_hash:
+            # Verify payment
+            if wallet.check_invoice(payment_hash):
+                logging.info(f"Payment verified for query '{query}' with hash {payment_hash}")
+                # Execute service
+                result = agent.perform_search(query)
+                return result
+            else:
+                return {"error": "Payment not verified"}
+
+        # Create invoice for payment
         invoice_data = wallet.create_invoice(
             amount=TASK_PRICE_SATS,
             memo=f"Streamfinder: {query}"

@@ -22,6 +22,7 @@ git+https://github.com/jeffthibault/python-nostr.git
 PyJWT
 psutil
 jsonschema
+pydantic
 
 # Testing utilities
 httpx
@@ -29,5 +30,7 @@ pytest
 pytest-asyncio
 pytest-mock
 
-# Optional dependencies
-uvicorn
+# Security dependencies
+cryptography
+secrets
+hashlib

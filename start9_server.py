@@ -58,13 +58,19 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Add CORS middleware
+# Add CORS middleware - SECURE CONFIGURATION
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
+    allow_origins=[
+        "https://yourdomain.com",  # Replace with your actual domain
+        "https://your-start9-server.com",  # Replace with your Start9 server domain
+        "http://localhost:3000",  # For development only
+        "http://localhost:8000",  # For development only
+    ],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["Authorization", "Content-Type", "X-Requested-With"],
+    expose_headers=["X-Payment-Required"],
 )
 
 # Include agent routers

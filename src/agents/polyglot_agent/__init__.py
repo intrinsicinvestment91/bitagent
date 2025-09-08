@@ -9,8 +9,16 @@ import logging
 # Add the project root to the path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
-from fastapi import APIRouter, HTTPException, Request, File, UploadFile
+from fastapi import APIRouter, HTTPException, Request, File, UploadFile, Depends
 from src.agents.polyglot_agent.polyglot_agent import PolyglotAgent
+from src.security.secure_endpoints import (
+    require_authentication, 
+    require_payment, 
+    TranslationRequest, 
+    TranscriptionRequest,
+    validate_file_upload,
+    sanitize_input
+)
 
 # Create agent instance
 agent = PolyglotAgent()
@@ -32,41 +40,54 @@ async def get_services():
     }
 
 @router.post("/translate")
-async def translate(request: Request):
+@require_authentication(["read", "write"])
+@require_payment(min_sats=100, service_name="translation")
+async def translate(request: Request, translation_request: TranslationRequest):
     """
     Translates text from one language to another.
-    Requires 'text', 'source_lang', and 'target_lang' in the request body.
+    Requires authentication and payment.
     """
     try:
-        data = await request.json()
-        text = data["text"]
-        source = data.get("source_lang", "auto")
-        target = data.get("target_lang", "en")
-    except KeyError:
-        raise HTTPException(status_code=400, detail="Missing 'text' parameter")
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid JSON: {str(e)}")
-
-    try:
+        # Sanitize input
+        text = sanitize_input(translation_request.text)
+        source = sanitize_input(translation_request.source_lang)
+        target = sanitize_input(translation_request.target_lang)
+        
+        # Log the request
+        agent_id = getattr(request.state, 'agent_id', 'unknown')
+        logging.info(f"Translation request from agent {agent_id}: {source} -> {target}")
+        
         result = await agent.handle_translation(text, source, target)
         
         if "error" in result:
+            logging.error(f"Translation error: {result['error']}")
             raise HTTPException(status_code=500, detail=result["error"])
         
         return result
     except Exception as e:
         logging.error(f"Translation error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Translation service error")
 
 @router.post("/transcribe")
-async def transcribe(audio: UploadFile = File(...)):
+@require_authentication(["read", "write"])
+@require_payment(min_sats=250, service_name="transcription")
+async def transcribe(
+    request: Request,
+    audio: UploadFile = File(...),
+    transcription_request: TranscriptionRequest = Depends()
+):
     """
     Transcribes an uploaded audio file to text.
+    Requires authentication and payment.
     """
-    if not audio:
-        raise HTTPException(status_code=400, detail="Missing 'audio' file")
-
     try:
+        # Validate file upload
+        audio = validate_file_upload(audio, max_size=50 * 1024 * 1024)  # 50MB limit
+        
+        # Log the request
+        agent_id = getattr(request.state, 'agent_id', 'unknown')
+        logging.info(f"Transcription request from agent {agent_id}: {audio.filename}")
+        
         audio_bytes = await audio.read()
         
         # Save to temporary file
@@ -78,6 +99,7 @@ async def transcribe(audio: UploadFile = File(...)):
             result = await agent.handle_transcription(audio_file_path=temp_file_path)
             
             if "error" in result:
+                logging.error(f"Transcription error: {result['error']}")
                 raise HTTPException(status_code=500, detail=result["error"])
             
             return result
@@ -88,9 +110,11 @@ async def transcribe(audio: UploadFile = File(...)):
             except:
                 pass
 
+    except HTTPException:
+        raise
     except Exception as e:
         logging.error(f"Transcription error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Transcription service error")
 
 # A2A compatible endpoints (like StreamfinderAgent)
 @router.post("/a2a")
