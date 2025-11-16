@@ -1,40 +1,160 @@
-version: '3.8'
+id: bitagent
+title: "BitAgent"
+version: "0.1.0"
+min-os-version: "0.3.5"
+license: MIT
+release-notes: "Initial BitAgent release"
+wrapper-repo: "https://github.com/intrinsicinvestment91/bitagent-start9"
+upstream-repo: "https://github.com/intrinsicinvestment91/bitagent"
 
-services:
-  bitagent:
-    build: .
-    container_name: bitagent
-    ports:
-      - "8000:8000"
-    volumes:
-      - bitagent-data:/data
-      - ./logs:/app/logs
-    environment:
-      # LNbits Configuration
-      - LNBITS_URL=${LNBITS_URL}
-      - LNBITS_API_KEY=${LNBITS_API_KEY}
-      
-      # Start9 Configuration
-      - START9_NODE_ID=${START9_NODE_ID}
-      - HOST=0.0.0.0
-      - PORT=8000
-      
-      # Optional: Fedimint Configuration
-      - FEDIMINT_URL=${FEDIMINT_URL:-}
-      - FEDIMINT_API_KEY=${FEDIMINT_API_KEY:-}
-      
-      # Optional: Nostr Configuration
-      - NOSTR_PRIVATE_KEY=${NOSTR_PRIVATE_KEY:-}
-      
-      # Optional: Database
-      - DATABASE_URL=${DATABASE_URL:-sqlite:///data/bitagent.db}
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+description:
+  short: "Autonomous Lightning-enabled AI agent"
+  long: "BitAgent is an AI-driven automation agent capable of sending and receiving Bitcoin payments over Lightning using LNbits. Includes optional Nostr and Fedimint support."
+
+assets:
+  icon: "icon.png"
+  license: "LICENSE"
+  instructions: "instructions.md"
+  docker-images: "image.tar"
+
+main:
+  type: docker
+  image: main
+  entrypoint: uvicorn
+  args:
+    - "main:app"
+    - "--host"
+    - "0.0.0.0"
+    - "--port"
+    - "{{ config.port }}"
+  environment:
+    LNBITS_URL: "{{ config.lnbits_url }}"
+    LNBITS_API_KEY: "{{ config.lnbits_api_key }}"
+    START9_NODE_ID: "{{ config.start9_node_id }}"
+    HOST: "0.0.0.0"
+    PORT: "{{ config.port }}"
+
+    # Optional
+    FEDIMINT_URL: "{{ config.fedimint_url }}"
+    FEDIMINT_API_KEY: "{{ config.fedimint_api_key }}"
+    NOSTR_PRIVATE_KEY: "{{ config.nostr_private_key }}"
+    DATABASE_URL: "sqlite:////data/bitagent.db"
+
+  mounts:
+    main: /data
+
+interfaces:
+  main:
+    name: "BitAgent API"
+    description: "BitAgent HTTP API"
+    ui: true
+    protocols: ["http","tcp"]
+    tor-config:
+      port-mapping:
+        "{{ config.port }}": "{{ config.port }}"
+    lan-config:
+      "{{ config.port }}":
+        ssl: true
+        internal: "{{ config.port }}"
+
+volumes:
+  main:
+    type: data
+    description: "BitAgent data directory"
+
+config:
+  properties:
+    lnbits_url:
+      type: string
+      name: "LNbits URL"
+      description: "URL of your LNbits instance"
+      required: true
+
+    lnbits_api_key:
+      type: string
+      name: "LNbits Admin Key"
+      description: "The API key for your LNbits wallet"
+      secret: true
+      required: true
+
+    start9_node_id:
+      type: string
+      name: "Start9 Node ID"
+      description: "Node ID of this Start9 server"
+      required: true
+
+    port:
+      type: number
+      name: "Port"
+      default: 8000
+      description: "Internal service port"
+
+    fedimint_url:
+      type: string
+      name: "Fedimint URL"
+      required: false
+
+    fedimint_api_key:
+      type: string
+      name: "Fedimint API Key"
+      secret: true
+      required: false
+
+    nostr_private_key:
+      type: string
+      name: "Nostr Private Key"
+      secret: true
+      required: false
+
+  required:
+    - lnbits_url
+    - lnbits_api_key
+    - start9_node_id
+
+health-checks:
+  web:
+    name: "HTTP"
+    description: "BitAgent must return 200 at /health"
+    type: docker
+    image: main
+    entrypoint: /bin/sh
+    args:
+      - -lc
+      - >
+        code=$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:{{ config.port }}/health);
+        if [ "$code" = "200" ]; then echo '{"ok":true}';
+        else echo '{"ok":false,"code":'$code'}'; exit 1; fi
+    inject: true
+    io-format: json
+
+backup:
+  create:
+    type: docker
+    image: compat
+    system: true
+    entrypoint: compat
+    args:
+      - duplicity
+      - bitagent
+      - /mnt/backup
+      - /data
+    mounts:
+      BACKUP: /mnt/backup
+      main: /data
+
+  restore:
+    type: docker
+    image: compat
+    system: true
+    entrypoint: compat
+    args:
+      - duplicity-restore
+      - bitagent
+      - /mnt/backup
+      - /data
+    mounts:
+      BACKUP: /mnt/backup
+      main: /data      start_period: 40s
 
 volumes:
   bitagent-data:
