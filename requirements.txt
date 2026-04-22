@@ -26,6 +26,9 @@ psutil
 jsonschema
 pydantic
 
+# MCP (Model Context Protocol)
+mcp
+
 # Testing utilities
 httpx
 pytest

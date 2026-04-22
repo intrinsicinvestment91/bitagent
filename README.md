@@ -72,9 +72,43 @@ curl -X POST http://localhost:8000/polyglot/translate \
 | **PolyglotAgent** | `/polyglot/translate` | Text translation (100+ languages) | 100 sats |
 | **PolyglotAgent** | `/polyglot/transcribe` | Audio → text (Whisper) | 250 sats |
 | **CoordinatorAgent** | `/coordinator/translate_audio` | Audio → transcribe → translate | 350 sats |
+| **PriceOracleAgent** | `/oracle/price/{coin}` | Live crypto price (BTC, ETH, LTC…) | 2 sats |
+| **WebFetchAgent** | `/fetch/url` | Fetch & clean any public web page | 25 sats |
+| **SearchAgent** | `/search/query` | Web search (Brave → SearXNG → DDG) | 10 sats |
 | **StreamfinderAgent** | `/a2a` (JSON-RPC) | Streaming availability search | 100 sats |
 
 All agents implement the **A2A JSON-RPC protocol** — they can call each other without human involvement.
+
+---
+
+## Use with Claude (MCP)
+
+BitAgent ships an [MCP](https://modelcontextprotocol.io) server so Claude can call your agents as tools directly — no HTTP, no payment gate in the loop.
+
+```bash
+# Clone and install
+git clone https://github.com/intrinsicinvestment91/bitagent.git
+cd bitagent
+pip install -r requirements.txt
+
+# Add to Claude Code
+claude mcp add bitagent -- python /path/to/bitagent/mcp_server.py
+```
+
+Or drop a `.mcp.json` in your project root:
+```json
+{
+  "mcpServers": {
+    "bitagent": {
+      "type": "stdio",
+      "command": "python",
+      "args": ["/path/to/bitagent/mcp_server.py"]
+    }
+  }
+}
+```
+
+Claude then has access to `search`, `fetch_url`, `translate`, `get_price`, and `convert_sats` as native tools. Each result includes a `cost_sats` field so you can track spending.
 
 ---
 
@@ -83,17 +117,22 @@ All agents implement the **A2A JSON-RPC protocol** — they can call each other 
 ```
 src/
 ├── agents/
-│   ├── polyglot_agent/     # Translation & transcription (FastAPI router)
-│   ├── coordinator_agent/  # Multi-agent orchestration
-│   └── streamfinder/       # A2A reference implementation
+│   ├── polyglot_agent/       # Translation & transcription (FastAPI router)
+│   ├── coordinator_agent/    # Multi-agent orchestration
+│   ├── price_oracle_agent/   # Live crypto prices (CoinGecko → Binance fallback)
+│   ├── web_fetch_agent/      # Web page fetcher with SSRF protection
+│   ├── search_agent/         # Web search (Brave → SearXNG → DuckDuckGo fallback)
+│   └── streamfinder/         # A2A reference implementation
 ├── core/
-│   ├── agent.py            # Base class: DID identity + wallet + security
-│   ├── agent_server.py     # FastAPI wrapper with auto-generated endpoints
-│   └── payment.py          # @require_payment / @require_authentication decorators
-├── security/               # JWT auth, AES-256 encryption, input validation
-├── identity/               # DID document management (did:key, did:nostr, did:bitcoin)
-├── network/                # Nostr discovery, DHT peer-to-peer
-└── wallets/                # LNbits client, Fedimint ecash wallet
+│   ├── agent.py              # Base class: DID identity + wallet + security
+│   ├── agent_server.py       # FastAPI wrapper with auto-generated endpoints
+│   └── payment.py            # Payment flow helpers
+├── security/                 # JWT auth, AES-256 encryption, input validation
+├── identity/                 # DID document management (did:key, did:nostr, did:bitcoin)
+├── network/                  # Nostr discovery, DHT peer-to-peer
+└── wallets/                  # LNbits client, Fedimint ecash wallet
+
+mcp_server.py                 # MCP stdio server — exposes agents as Claude tools
 ```
 
 **Adding a new agent takes ~50 lines.** Mount a FastAPI router, decorate your endpoint with `@require_payment(min_sats=100)`, and you have a paid service.
