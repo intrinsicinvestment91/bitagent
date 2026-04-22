@@ -1,0 +1,22 @@
+version: "3.9"
+
+# Local development compose — NOT the Start9 manifest (that's docker-compose.yaml)
+services:
+  bitagent:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/data
+      - .:/app          # live reload in dev
+    env_file:
+      - .env
+    environment:
+      - RELOAD=true
+      - LOG_LEVEL=DEBUG
+    command: python main.py
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
