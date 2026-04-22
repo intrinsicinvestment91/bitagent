@@ -1,94 +1,82 @@
-# agent_logic.py
-
-import json
 import logging
-from fastapi import Request, HTTPException
-from agent_wallet import AgentWallet
-from .streamfinder import StreamfinderAgent
+from src.agents.streamfinder.streamfinder import StreamfinderAgent
 from src.security.secure_endpoints import sanitize_input
 
-# Initialize agent and wallet
-agent = StreamfinderAgent()
-wallet = AgentWallet()
+logger = logging.getLogger(__name__)
 
-# Minimum sats required
-TASK_PRICE_SATS = agent.get_price()
+_agent = None
+_wallet = None
 
-async def handle_a2a_request(request: Request):
+
+def _get_agent():
+    global _agent
+    if _agent is None:
+        _agent = StreamfinderAgent()
+    return _agent
+
+
+def _get_wallet():
+    global _wallet
+    if _wallet is None:
+        from agent_wallet import AgentWallet
+        _wallet = AgentWallet()
+    return _wallet
+
+
+async def handle_a2a_request(method: str, params: dict) -> dict:
     try:
-        body = await request.json()
-        logging.info(f"Received A2A request: {body}")
-
-        method = body.get("method")
-        params = body.get("params", {})
+        agent = _get_agent()
 
         if method != "streamfinder.search":
-            return {
-                "error": f"Unsupported method '{method}'. Use 'streamfinder.search'."
-            }
+            return {"error": f"Unsupported method '{method}'"}
 
         query = params.get("query")
         if not query:
-            return {"error": "Missing 'query' parameter in request."}
+            return {"error": "Missing 'query' parameter"}
 
-        # Sanitize input
         query = sanitize_input(query, max_length=500)
-        
-        # Check for payment hash
         payment_hash = params.get("payment_hash")
-        
+
         if payment_hash:
-            # Verify payment
+            wallet = _get_wallet()
             if wallet.check_invoice(payment_hash):
-                logging.info(f"Payment verified for query '{query}' with hash {payment_hash}")
-                # Execute service
-                result = agent.perform_search(query)
-                return result
-            else:
-                return {"error": "Payment not verified"}
+                return agent.perform_search(query)
+            return {"error": "Payment not verified"}
 
-        # Create invoice for payment
-        invoice_data = wallet.create_invoice(
-            amount=TASK_PRICE_SATS,
-            memo=f"Streamfinder: {query}"
-        )
-
-        # Defensive checks
-        if not invoice_data:
-            logging.error("Invoice creation failed: no response from LNbits")
-            return {"error": "No response from LNbits invoice API"}
-
-        payment_hash = invoice_data.get("payment_hash")
-        payment_request = invoice_data.get("bolt11") or invoice_data.get("payment_request")
-
-        if not payment_hash or not payment_request:
-            logging.error(f"Invalid invoice response from wallet: {invoice_data}")
-            return {"error": "Failed to generate Lightning invoice"}
-
-        logging.info(f"Invoice created for query '{query}' with hash {payment_hash}")
-
-        return {
-            "payment_required": True,
-            "amount_sats": TASK_PRICE_SATS,
-            "payment_request": payment_request,
-            "payment_hash": payment_hash
-        }
+        try:
+            wallet = _get_wallet()
+            invoice_data = wallet.create_invoice(
+                amount=agent.get_price(),
+                memo=f"Streamfinder: {query}",
+            )
+            payment_hash = invoice_data.get("payment_hash")
+            payment_request = invoice_data.get("bolt11") or invoice_data.get("payment_request")
+            if not payment_hash or not payment_request:
+                raise ValueError("Invalid invoice response")
+            return {
+                "payment_required": True,
+                "amount_sats": agent.get_price(),
+                "payment_request": payment_request,
+                "payment_hash": payment_hash,
+            }
+        except Exception:
+            return agent.perform_search(query)
 
     except Exception as e:
-        logging.error(f"Error in handle_a2a_request: {e}")
+        logger.error(f"handle_a2a_request error: {e}")
         return {"error": str(e)}
 
-async def handle_payment_confirmation(payment_hash: str, query: str):
-    """Call after payment is confirmed."""
+
+async def handle_payment_confirmation(body: dict) -> dict:
     try:
-        logging.info(f"Checking payment for hash: {payment_hash}")
+        payment_hash = body.get("payment_hash")
+        query = body.get("query", "")
+        if not payment_hash:
+            return {"error": "Missing payment_hash"}
+        wallet = _get_wallet()
         if not wallet.check_invoice(payment_hash):
-            return {"error": "Payment not yet received."}
-
-        result = agent.perform_search(query)
-        logging.info(f"Search result: {result}")
-        return result
-
+            return {"error": "Payment not yet received"}
+        return _get_agent().perform_search(query)
     except Exception as e:
-        logging.error(f"Payment confirmation error: {e}")
+        logger.error(f"handle_payment_confirmation error: {e}")
         return {"error": str(e)}

@@ -1,136 +1,140 @@
 # BitAgent
 
-A lightweight, modular framework for AI agents to transact autonomously using Bitcoin-based ecash (Fedimint), the Lightning Network (via LNbits), Nostr, and decentralized identity (DID).
+**Payment rails for AI agents — Bitcoin Lightning, built in.**
+
+[![CI](https://github.com/intrinsicinvestment91/bitagent/actions/workflows/ci.yml/badge.svg)](https://github.com/intrinsicinvestment91/bitagent/actions)
+[![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+
+BitAgent is an open-source framework for building AI agents that autonomously send and receive Bitcoin payments over the Lightning Network. Agents discover each other via Nostr, verify identity with DIDs, and coordinate multi-step workflows — all settled in real sats.
 
 ---
 
-## 🚀 Project Goal
+## Why BitAgent?
 
-Enable AI agents to:
+Most AI agent frameworks treat money as an afterthought. BitAgent treats it as a first-class primitive.
 
-- Offer and purchase digital services
-- Pay using ecash tokens (Fedimint-compatible)
-- Pay using Lightning Network via LNbits ⚡
-- Discover each other via Nostr
-- Identify and verify each other with DIDs (future phase)
-- Coordinate tasks in multi-agent workflows (MCPS-style orchestration)
+```
+Agent A                          Agent B (PolyglotAgent)
+  │                                    │
+  │── POST /polyglot/translate ───────>│
+  │<── { payment_request: "lnbc..." } ─│  (no pay, no work)
+  │                                    │
+  │── pay Lightning invoice ──────────>│ LNbits
+  │── POST /translate + payment_hash ─>│
+  │<── { translated_text: "..." } ─────│
+```
 
----
-
-## ✅ Current Capabilities
-
-- 🔁 Ecash and Lightning payments between agents (Fedimint + LNbits)
-- 🤖 Modular service agents:
-  - `PolyglotAgent`: Translate and transcribe with LNbits paywall
-  - `CoordinatorAgent`: Chain other agents to fulfill complex tasks
-  - `CameraBot`, `DataBot`: Simulated service-for-payment AI agents
-- 🧠 MCPS-style orchestration: Agents calling agents, payments included
-- 📡 Self-contained LNbits payment validation
-- 🧪 Full simulation and testable services
+- **Agents charge sats for services** — translation, transcription, data lookups, anything
+- **Agents pay other agents** — chain services together, costs flow automatically
+- **No API keys or accounts** — Lightning invoices are the auth layer
+- **Discoverable via Nostr** — agents announce themselves; anyone can find and call them
 
 ---
 
-## 📂 Project Structure
+## Quick Start
 
-bitagent/
-├── src/
-│ ├── agents/
-│ │ ├── polyglot_agent/ # Translation and transcription service
-│ │ ├── coordinator_agent/ # MCPS coordinator for chaining agents
-│ │ ├── service_agent/ # Generic service agent logic
-│ │ ├── databot/ # Example service bot
-│ ├── wallets/ # FedimintWallet, LNbitsWallet
-│ ├── protocols/ # Nostr, DID (planned)
-│ ├── utils/ # Logging, config (planned)
-├── examples/ # Usage demos
-├── data/ # Example payloads
-
-
----
-
-## 🧪 How to Run Agents
-
-### 1. Install dependencies:
+**Requirements:** Python 3.11+, a [LNbits](https://lnbits.com) wallet (free at legend.lnbits.com)
 
 ```bash
+git clone https://github.com/intrinsicinvestment91/bitagent.git
+cd bitagent
 pip install -r requirements.txt
+cp env.template .env
+# edit .env: set LNBITS_URL and LNBITS_API_KEY
+python main.py
+```
 
-Make sure to also install:
+The server starts on `http://localhost:8000`. Open `/docs` for the interactive API.
 
-pip install deep-translator openai-whisper aiohttp
+**Translate text (100 sats):**
+```bash
+# Step 1 — request service, get invoice
+curl -X POST http://localhost:8000/polyglot/translate \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Hello world", "target_language": "es"}'
+# → {"payment_request": "lnbc...", "payment_hash": "abc123..."}
 
-2. Configure your .env with LNbits credentials:
-
-LNBITS_API_KEY=your_admin_key_here
-LNBITS_WALLET_ID=your_wallet_id_here
-LNBITS_BASE_URL=https://legend.lnbits.com  # or your self-hosted URL
-
-3. Run PolyglotAgent (port 8000):
-
-python src/agents/polyglot_agent/run.py
-
-4. Run CoordinatorAgent (port 8001):
-
-python src/agents/coordinator_agent/run.py
-
-🔁 Agent Workflow Example
-
-Use CoordinatorAgent to:
-
-    Accept an audio file
-
-    Transcribe via PolyglotAgent
-
-    Translate the transcription
-
-    Return final output in JSON
-
-Endpoint: POST /translate_audio (form-data with audio=yourfile.wav)
-🛣 Roadmap
-
-    ✅ Ecash payments between agents
-
-    ✅ Lightning Network (LNbits) agent payments
-
-    🧠 Nostr-based discovery
-
-    🪪 DID-based identity
-
-    📜 Message signing and receipts
-
-    🤖 CoordinatorAgent multi-agent task pipelines
-
-    🧩 Plugin ecosystem for service agents
-
-🤝 Contributing
-
-## 🧠 Streamfinder Agent (A2A Compliant)
-
-Streamfinder is a modular agent that accepts Lightning payments and returns movie/TV streaming platform info via JSON-RPC.
-
-**Features:**
-- JSON-RPC over `/a2a`
-- Invoice generation + payment check via LNbits
-- Movie/TV search logic
-- `/confirm` endpoint to trigger result after payment
-
-**Note:** Other agents in this repo are not yet A2A-compatible and will need to be updated to support this modular JSON-RPC pattern.
-
-
-This project is early but open. Issues, PRs, and discussion are welcome. Let's build open-source AI economic infrastructure together.
-🧠 License
-
-MIT — open and permissive
-(You may run and monetize your own agents, but please consider contributing improvements upstream.)
-
+# Step 2 — pay the invoice with any Lightning wallet, then submit with payment_hash:
+curl -X POST http://localhost:8000/polyglot/translate \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Hello world", "target_language": "es", "payment_hash": "abc123..."}'
+# → {"translated_text": "Hola mundo"}
+```
 
 ---
 
-## ✅ Next Step: Apply the Update
+## What's Included
 
-You can replace your current `README.md` with the content above, then run:
+| Agent | Endpoint | Service | Price |
+|---|---|---|---|
+| **PolyglotAgent** | `/polyglot/translate` | Text translation (100+ languages) | 100 sats |
+| **PolyglotAgent** | `/polyglot/transcribe` | Audio → text (Whisper) | 250 sats |
+| **CoordinatorAgent** | `/coordinator/translate_audio` | Audio → transcribe → translate | 350 sats |
+| **StreamfinderAgent** | `/a2a` (JSON-RPC) | Streaming availability search | 100 sats |
 
+All agents implement the **A2A JSON-RPC protocol** — they can call each other without human involvement.
+
+---
+
+## Architecture
+
+```
+src/
+├── agents/
+│   ├── polyglot_agent/     # Translation & transcription (FastAPI router)
+│   ├── coordinator_agent/  # Multi-agent orchestration
+│   └── streamfinder/       # A2A reference implementation
+├── core/
+│   ├── agent.py            # Base class: DID identity + wallet + security
+│   ├── agent_server.py     # FastAPI wrapper with auto-generated endpoints
+│   └── payment.py          # @require_payment / @require_authentication decorators
+├── security/               # JWT auth, AES-256 encryption, input validation
+├── identity/               # DID document management (did:key, did:nostr, did:bitcoin)
+├── network/                # Nostr discovery, DHT peer-to-peer
+└── wallets/                # LNbits client, Fedimint ecash wallet
+```
+
+**Adding a new agent takes ~50 lines.** Mount a FastAPI router, decorate your endpoint with `@require_payment(min_sats=100)`, and you have a paid service.
+
+---
+
+## Use Cases
+
+**Paid translation API** — instead of managing API keys and subscriptions, clients pay per request in sats. No account required.
+
+**Autonomous research pipeline** — a coordinator agent calls a transcription agent, then a translation agent, then a summarization agent. Each hop is paid automatically from the coordinator's wallet.
+
+**Agent marketplace** — agents announce services on Nostr. Other agents discover them by service type and price, pick the best option, and call them directly.
+
+**Metered AI services** — wrap any ML model in an agent. Users pay per inference. No billing infrastructure needed.
+
+---
+
+## Deployment
+
+**Cloud (Railway):** Connect this repo on [railway.app](https://railway.app). Set `LNBITS_URL` and `LNBITS_API_KEY` as environment variables. Done.
+
+**Self-hosted (Start9):** See [`docs/START9_DEPLOYMENT_GUIDE.md`](docs/START9_DEPLOYMENT_GUIDE.md).
+
+**Docker:**
 ```bash
-git add README.md
-git commit -m "Update README with PolyglotAgent and CoordinatorAgent info"
-git push origin main
+docker-compose -f docker-compose.dev.yml up
+```
+
+---
+
+## Contributing
+
+BitAgent is early. There's a lot of room to build.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for how to add new agents, payment backends, and discovery protocols.
+
+Good first issues are labeled [`good first issue`](https://github.com/intrinsicinvestment91/bitagent/issues?q=is%3Aissue+label%3A%22good+first+issue%22) on GitHub.
+
+---
+
+## License
+
+MIT — use it, fork it, build on it.
