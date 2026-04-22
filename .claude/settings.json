@@ -5,7 +5,10 @@
       "Bash(pytest*)",
       "Bash(pip*)",
       "Bash(docker*)",
-      "Bash(uvicorn*)"
+      "Bash(uvicorn*)",
+      "Bash(git *)",
+      "Bash(curl *)",
+      "Bash(jq *)"
     ]
   },
   "hooks": {

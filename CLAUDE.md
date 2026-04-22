@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Project Is
 
-BitAgent is a modular, Lightning-enabled AI agent framework. Agents autonomously offer services (translation, transcription, streaming search), accept Bitcoin Lightning (LNbits) and Fedimint ecash payments, discover each other via the Nostr protocol, and verify identity using Decentralized Identifiers (DIDs). Agents can chain together into multi-step workflows through a CoordinatorAgent.
+BitAgent is a modular, Lightning-enabled AI agent framework. Agents autonomously offer services (translation, web search, crypto prices, web fetching, streaming search), accept Bitcoin Lightning (LNbits) payments, discover each other via the Nostr protocol, and verify identity using Decentralized Identifiers (DIDs). Agents can chain together into multi-step workflows through a CoordinatorAgent.
+
+**Live deployment:** `https://bitagent-production.up.railway.app` — connected to a live LNbits wallet (~68k sats). End-to-end Lightning payments have been verified in production (10-sat search, 100-sat translation).
 
 ## Deployment Targets
 
@@ -45,64 +47,76 @@ pytest tests/
 
 ## Development Priorities
 
-These are the known gaps to address when "finishing" the project (in order):
+Remaining gaps (already-fixed items removed):
 
-1. **Verify import paths** — `bitagent.core.*` imports in agents should resolve to `src.core.*`; check each agent's `__init__.py` before running
-2. **CORS config** — `main.py` reads from `ALLOWED_ORIGINS` env var; set it for production Railway deploy
-3. **Unify agent pattern** — `polyglot_agent` and `coordinator_agent` should use `@require_payment` from `src/core/payment.py`; `streamfinder` is the A2A reference
-4. **LNbits live test** — run `python check_invoice.py` to verify wallet connectivity before testing payment flows
-5. **Remove `START9_NODE_ID` requirement** — `main.py` does not require it; `start9_server.py` still does (intentional)
+1. **Unify agent pattern** — `polyglot_agent` and `coordinator_agent` use inline payment logic; they should eventually use `@require_payment` from `src/core/payment.py`. The three new agents (oracle, fetch, search) also use inline logic — `streamfinder` is the A2A reference.
+2. **CORS config** — `ALLOWED_ORIGINS` is set in Railway env vars; verify it includes any new frontends.
+3. **Whisper/transcription** — `openai-whisper` and `ffmpeg-python` are excluded from `requirements.txt` (pulls PyTorch ~2GB, breaks cloud builds). Install locally to use transcription: `pip install openai-whisper ffmpeg-python`.
+4. **Phase 3** — WebSocket + MQTT support (needed for SDEN real-time streaming data).
+5. **Phase 4** — Stablecoin support (Taproot Assets, Fedimint USD ecash).
+6. **Phase 5** — Agent registry + reputation system.
+
+**Fixed in prior session (do not re-fix):**
+- `secrets`/`hashlib` removed from requirements.txt (they're stdlib)
+- `agent_wallet.py` — validation deferred to `__init__()`, not module level
+- `agent_logic.py` — broken relative import and wrong function signature fixed
+- `polyglot_agent/__init__.py` — broken `@require_payment` / `@require_authentication` decorator chain replaced with inline payment logic
+- DDG scraper replaced with `ddgs` package (DDG blocks server-side scraping)
 
 ## Architecture
 
 ### Request Lifecycle
 
 ```
-Client → FastAPI endpoint → Auth check (JWT/API key) → Payment check (Lightning invoice)
-       → Service execution → Audit log → Response
+Client → FastAPI endpoint → Payment check (Lightning invoice if missing)
+       → Service execution → Response (includes cost_sats)
 ```
 
-If no payment is included, the endpoint returns a Lightning invoice. The client pays, then re-submits with the `payment_hash`. The `@require_payment(min_sats)` and `@require_authentication(permissions)` decorators in `src/core/payment.py` enforce this pattern.
+If no `payment_hash` is included, the endpoint returns a 402 with a Lightning invoice. The client pays, then resubmits with `payment_hash`. New agents (oracle, fetch, search) pass through without payment if no wallet is configured (dev mode).
 
-### Key Layers
+### Agents (`src/agents/`)
 
-**Agents (`src/agents/`)** — three concrete agents:
-- `polyglot_agent/` — translation (100 sats) and transcription via Whisper (250 sats)
-- `coordinator_agent/` — chains polyglot calls; orchestrates `translate_audio` (350 sats) and generic `chain_tasks`
-- `streamfinder/streamfinder.py` — streaming search via A2A JSON-RPC protocol (100 sats)
+| Agent | Price | Notes |
+|---|---|---|
+| `polyglot_agent/` | 100 sats (translate), 250 sats (transcribe) | Whisper excluded from prod build |
+| `coordinator_agent/` | 350 sats | Chains polyglot calls |
+| `price_oracle_agent/` | 2 sats | CoinGecko primary, Binance fallback, 60s cache |
+| `web_fetch_agent/` | 25 sats | SSRF protection blocks private IP ranges |
+| `search_agent/` | 10 sats | Brave → SearXNG → DuckDuckGo (`ddgs`) fallback |
+| `streamfinder/` | 100 sats | A2A JSON-RPC reference implementation |
 
-**Core framework (`src/core/`):**
+### MCP Server (`mcp_server.py`)
+
+Exposes `translate`, `search`, `fetch_url`, `get_price`, `convert_sats` as Claude tools via stdio MCP. Imports agent modules directly — no HTTP, no payment gate. Each result includes `cost_sats`. Configured via `.mcp.json`.
+
+To use in Claude Code: run `/mcp` to reload, or restart the session after cloning.
+
+### Core framework (`src/core/`)
 - `agent.py` — `Agent` base class wiring together security, monitoring, and payments
 - `agent_server.py` — `AgentServer` wraps FastAPI; auto-generates `/info`, `/services`, `/stats`, `/security` endpoints
-- `payment.py` — `@require_payment` / `@require_authentication` decorators
+- `payment.py` — `@require_payment` / `@require_authentication` decorators (target pattern for all agents)
 
-**Payment layer:**
+### Payment layer
 - `lnbits_client.py` — REST client for LNbits API (invoice creation, payment status)
-- `agent_wallet.py` — `AgentWallet` wraps `LNbitsClient`; loads config from `.env`
+- `agent_wallet.py` — `AgentWallet` wraps `LNbitsClient`; loads config from `.env`; validation deferred to `__init__()` so import doesn't crash
 - `src/wallets/fedimint_wallet.py` — simulated Fedimint ecash wallet (mint/accept/redeem tokens)
 
-**Security (`src/security/`):**
+### Security (`src/security/`)
 - `authentication.py` — JWT tokens, API key hierarchy (read → write → admin)
 - `encryption.py` — AES-256-GCM, ChaCha20-Poly1305, X25519 key exchange
-- `payment_security.py` — escrow payments, fraud scoring, dispute resolution
 - `secure_endpoints.py` — input sanitization, file upload validation, Pydantic models
 
-**Identity (`src/identity/`):**
-- `enhanced_did.py` — DID document creation supporting `did:key`, `did:web`, `did:bitcoin`, `did:nostr`; verifiable credentials and trust scoring
-
-**Discovery (`src/network/`):**
-- `nostr.py` — publishes agent announcements as Nostr Kind 30078 events with service tags and pricing
-- `p2p_discovery.py` — DHT-based peer discovery across Nostr, DNS, and multicast
-
-**Monitoring (`src/monitoring/`):**
-- `audit_logger.py` — structured audit log for all system events, agent actions, payments, and auth
-- `performance_monitor.py` — per-service latency and success/failure metrics
+### Identity and Discovery
+- `src/identity/enhanced_did.py` — DID document creation supporting `did:key`, `did:web`, `did:bitcoin`, `did:nostr`
+- `src/network/nostr.py` — publishes agent announcements as Nostr Kind 30078 events
+- `src/network/p2p_discovery.py` — DHT-based peer discovery across Nostr, DNS, and multicast
 
 ### Entry Points
 
 | File | Purpose |
 |---|---|
 | `main.py` | Railway / cloud deployment — env-driven CORS, no Start9 deps |
+| `mcp_server.py` | MCP stdio server — Claude uses this to call agents as tools |
 | `start9_server.py` | Start9 deployment — preserved, do not modify for other platforms |
 | `src/agents/polyglot_agent/run.py` | Standalone polyglot dev server |
 | `src/agents/coordinator_agent/run.py` | Standalone coordinator dev server |
@@ -112,3 +126,9 @@ If no payment is included, the endpoint returns a Lightning invoice. The client 
 ## A2A Protocol
 
 `streamfinder` implements the Agent-to-Agent JSON-RPC pattern. Requests hit `POST /a2a` with `{"method": "streamfinder.search", "params": {...}}`. This is the reference implementation for adding new A2A-compatible agents.
+
+`agent_logic.py` routes A2A calls for oracle (`oracle.price`, `oracle.prices`, `oracle.convert`), fetch (`fetch.url`), and search (`search.query`) in addition to streamfinder.
+
+## Relationship to SDEN
+
+SDEN (`/home/charlie/sensor-data-exchange-node`) is a companion protocol for IoT devices that sell signed sensor data via Lightning. A SDEN producer node IS a BitAgent agent — it uses BitAgent's wallet, Nostr discovery, and DID identity. When working on SDEN, understand they are one system. The SDEN `SensorAgent` class should extend BitAgent's `Agent` base class.
