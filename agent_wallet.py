@@ -2,20 +2,17 @@ from lnbits_client import LNbitsClient
 from dotenv import load_dotenv
 import os
 
-# ✅ Load environment variables
 load_dotenv()
 
-api_key = os.getenv("LNBITS_API_KEY")
-api_base = os.getenv("LNBITS_URL")
 
-if not api_key:
-    raise ValueError("❌ LNBITS_API_KEY not found in .env file")
-if not api_base:
-    raise ValueError("❌ LNBITS_URL not found in .env file")
-
-# ✅ Define AgentWallet class
 class AgentWallet:
     def __init__(self):
+        api_key = os.getenv("LNBITS_API_KEY")
+        api_base = os.getenv("LNBITS_URL")
+        if not api_key:
+            raise ValueError("LNBITS_API_KEY not set")
+        if not api_base:
+            raise ValueError("LNBITS_URL not set")
         self.client = LNbitsClient(api_key, api_base)
 
     def create_invoice(self, amount: int, memo: str = "BitAgent Invoice") -> dict:
