@@ -1,158 +1,141 @@
-# src/agents/polyglot_agent/__init__.py
-
-import json
-import sys
 import os
 import tempfile
 import logging
 
-# Add the project root to the path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi.responses import JSONResponse
 
-from fastapi import APIRouter, HTTPException, Request, File, UploadFile, Depends
 from src.agents.polyglot_agent.polyglot_agent import PolyglotAgent
-from src.security.secure_endpoints import (
-    require_authentication, 
-    require_payment, 
-    TranslationRequest, 
-    TranscriptionRequest,
-    validate_file_upload,
-    sanitize_input
-)
+from src.security.secure_endpoints import TranslationRequest, sanitize_input
 
-# Create agent instance
+logger = logging.getLogger(__name__)
+
 agent = PolyglotAgent()
-
-# Create router
 router = APIRouter()
+
+_wallet = None
+
+
+def _get_wallet():
+    global _wallet
+    if _wallet is None:
+        try:
+            from agent_wallet import AgentWallet
+            _wallet = AgentWallet()
+        except Exception:
+            pass
+    return _wallet
+
+
+def _payment_invoice(price: int, memo: str):
+    wallet = _get_wallet()
+    if not wallet:
+        return None
+    try:
+        data = wallet.create_invoice(price, memo)
+        return {
+            "payment_required": True,
+            "amount_sats": price,
+            "payment_request": data.get("bolt11") or data.get("payment_request"),
+            "payment_hash": data.get("payment_hash"),
+        }
+    except Exception as e:
+        logger.warning(f"Invoice creation failed: {e}")
+        return None
+
+
+def _verify_payment(payment_hash: str) -> bool:
+    wallet = _get_wallet()
+    if not wallet:
+        return True  # no wallet configured — allow through
+    try:
+        return wallet.check_invoice(payment_hash)
+    except Exception:
+        return False
+
 
 @router.get("/info")
 async def get_agent_info():
-    """Get agent information."""
     return agent.get_info()
+
 
 @router.get("/services")
 async def get_services():
-    """Get available services."""
-    return {
-        "services": agent.list_services(),
-        "pricing": agent.get_price()
-    }
+    return {"services": agent.list_services(), "pricing": agent.get_price()}
+
 
 @router.post("/translate")
-@require_authentication(["read", "write"])
-@require_payment(min_sats=100, service_name="translation")
-async def translate(request: Request, translation_request: TranslationRequest):
-    """
-    Translates text from one language to another.
-    Requires authentication and payment.
-    """
-    try:
-        # Sanitize input
-        text = sanitize_input(translation_request.text)
-        source = sanitize_input(translation_request.source_lang)
-        target = sanitize_input(translation_request.target_lang)
-        
-        # Log the request
-        agent_id = getattr(request.state, 'agent_id', 'unknown')
-        logging.info(f"Translation request from agent {agent_id}: {source} -> {target}")
-        
-        result = await agent.handle_translation(text, source, target)
-        
-        if "error" in result:
-            logging.error(f"Translation error: {result['error']}")
-            raise HTTPException(status_code=500, detail=result["error"])
-        
-        return result
-    except Exception as e:
-        logging.error(f"Translation error: {e}")
-        raise HTTPException(status_code=500, detail="Translation service error")
+async def translate(body: TranslationRequest):
+    text = sanitize_input(body.text)
+    source = sanitize_input(body.source_lang)
+    target = sanitize_input(body.target_lang)
+    payment_hash = body.payment_hash
+
+    price = agent.get_price("translate")
+
+    if payment_hash:
+        if not _verify_payment(payment_hash):
+            raise HTTPException(402, "Payment not verified")
+    else:
+        invoice = _payment_invoice(price, f"Translate: {text[:40]}")
+        if invoice:
+            return JSONResponse(status_code=402, content=invoice)
+
+    result = await agent.handle_translation(text, source, target)
+    if "error" in result:
+        raise HTTPException(500, result["error"])
+    return result
+
 
 @router.post("/transcribe")
-@require_authentication(["read", "write"])
-@require_payment(min_sats=250, service_name="transcription")
-async def transcribe(
-    request: Request,
-    audio: UploadFile = File(...),
-    transcription_request: TranscriptionRequest = Depends()
-):
-    """
-    Transcribes an uploaded audio file to text.
-    Requires authentication and payment.
-    """
-    try:
-        # Validate file upload
-        audio = validate_file_upload(audio, max_size=50 * 1024 * 1024)  # 50MB limit
-        
-        # Log the request
-        agent_id = getattr(request.state, 'agent_id', 'unknown')
-        logging.info(f"Transcription request from agent {agent_id}: {audio.filename}")
-        
-        audio_bytes = await audio.read()
-        
-        # Save to temporary file
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_file:
-            temp_file.write(audio_bytes)
-            temp_file_path = temp_file.name
+async def transcribe(audio: UploadFile = File(...), payment_hash: str = None):
+    price = agent.get_price("transcribe")
 
+    if payment_hash:
+        if not _verify_payment(payment_hash):
+            raise HTTPException(402, "Payment not verified")
+    else:
+        invoice = _payment_invoice(price, "Audio transcription")
+        if invoice:
+            return JSONResponse(status_code=402, content=invoice)
+
+    audio_bytes = await audio.read()
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+        tmp.write(audio_bytes)
+        tmp_path = tmp.name
+
+    try:
+        result = await agent.handle_transcription(audio_file_path=tmp_path)
+    finally:
         try:
-            result = await agent.handle_transcription(audio_file_path=temp_file_path)
-            
-            if "error" in result:
-                logging.error(f"Transcription error: {result['error']}")
-                raise HTTPException(status_code=500, detail=result["error"])
-            
-            return result
-        finally:
-            # Clean up temp file
-            try:
-                os.unlink(temp_file_path)
-            except:
-                pass
+            os.unlink(tmp_path)
+        except Exception:
+            pass
 
-    except HTTPException:
-        raise
-    except Exception as e:
-        logging.error(f"Transcription error: {e}")
-        raise HTTPException(status_code=500, detail="Transcription service error")
+    if "error" in result:
+        raise HTTPException(500, result["error"])
+    return result
 
-# A2A compatible endpoints (like StreamfinderAgent)
+
 @router.post("/a2a")
-async def handle_a2a_request(request: Request):
-    """
-    A2A compatible endpoint for agent-to-agent communication.
-    """
-    try:
-        body = await request.json()
-        logging.info(f"Received A2A request: {body}")
+async def a2a(body: dict):
+    method = body.get("method")
+    params = body.get("params", {})
 
-        method = body.get("method")
-        params = body.get("params", {})
+    if method == "polyglot.translate":
+        text = params.get("text")
+        if not text:
+            return {"error": "Missing 'text'"}
+        return await agent.handle_translation(
+            sanitize_input(text),
+            params.get("source_lang", "auto"),
+            params.get("target_lang", "en"),
+        )
 
-        if method == "polyglot.translate":
-            text = params.get("text")
-            source_lang = params.get("source_lang", "auto")
-            target_lang = params.get("target_lang", "en")
-            
-            if not text:
-                return {"error": "Missing 'text' parameter"}
-            
-            result = await agent.handle_translation(text, source_lang, target_lang)
-            return result
-            
-        elif method == "polyglot.transcribe":
-            audio_data = params.get("audio_data")
-            if not audio_data:
-                return {"error": "Missing 'audio_data' parameter"}
-            
-            result = await agent.handle_transcription(audio_data=audio_data)
-            return result
-            
-        else:
-            return {
-                "error": f"Unsupported method '{method}'. Use 'polyglot.translate' or 'polyglot.transcribe'."
-            }
+    if method == "polyglot.transcribe":
+        audio_data = params.get("audio_data")
+        if not audio_data:
+            return {"error": "Missing 'audio_data'"}
+        return await agent.handle_transcription(audio_data=audio_data)
 
-    except Exception as e:
-        logging.error(f"Error in handle_a2a_request: {e}")
-        return {"error": str(e)}
+    return {"error": f"Unsupported method '{method}'"}

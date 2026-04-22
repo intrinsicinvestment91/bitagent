@@ -177,8 +177,8 @@ class TranslationRequest(BaseModel):
     
     @validator('source_lang', 'target_lang')
     def validate_language_codes(cls, v):
-        if v != "auto" and len(v) != 2:
-            raise ValueError('Language codes must be 2 characters or "auto"')
+        if v and len(v) > 10:
+            raise ValueError('Language code too long')
         return v.lower()
 
 class TranscriptionRequest(BaseModel):
