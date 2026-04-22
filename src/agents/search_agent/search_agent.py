@@ -1,7 +1,6 @@
 import os
 import logging
 import httpx
-from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)
 
@@ -46,31 +45,21 @@ async def _search_searxng(query: str, count: int) -> list[dict]:
 
 
 async def _search_duckduckgo(query: str, count: int) -> list[dict]:
-    async with httpx.AsyncClient(
-        timeout=8,
-        follow_redirects=True,
-        headers={"User-Agent": "BitAgent/1.0"},
-    ) as client:
-        r = await client.get(
-            "https://lite.duckduckgo.com/lite/",
-            params={"q": query},
-        )
-        r.raise_for_status()
+    import asyncio
+    from ddgs import DDGS
 
-    soup = BeautifulSoup(r.text, "html.parser")
-    results = []
-    for row in soup.find_all("tr"):
-        a = row.find("a", class_="result-link")
-        snippet_td = row.find("td", class_="result-snippet")
-        if a and snippet_td:
-            results.append({
-                "title": a.get_text(strip=True),
-                "url": a.get("href", ""),
-                "snippet": snippet_td.get_text(strip=True),
-            })
-            if len(results) >= count:
-                break
-    return results
+    def _run():
+        return list(DDGS().text(query, max_results=count))
+
+    raw = await asyncio.get_event_loop().run_in_executor(None, _run)
+    return [
+        {
+            "title": r.get("title", ""),
+            "url": r.get("href", ""),
+            "snippet": r.get("body", ""),
+        }
+        for r in raw
+    ]
 
 
 async def search(query: str, num_results: int = 10) -> dict:

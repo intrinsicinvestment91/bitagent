@@ -13,6 +13,7 @@ python-dotenv
 # Language services
 deep-translator
 beautifulsoup4
+ddgs
 # openai-whisper and ffmpeg-python excluded from cloud deploy (pulls PyTorch ~2GB)
 # Install locally if you need transcription: pip install openai-whisper ffmpeg-python
 
