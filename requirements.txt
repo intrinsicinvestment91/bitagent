@@ -30,7 +30,4 @@ pytest
 pytest-asyncio
 pytest-mock
 
-# Security dependencies
-cryptography
-secrets
-hashlib
+# Security dependencies (cryptography already listed above; secrets/hashlib are stdlib)
