@@ -12,8 +12,8 @@ python-dotenv
 
 # Language services
 deep-translator
-openai-whisper
-ffmpeg-python
+# openai-whisper and ffmpeg-python excluded from cloud deploy (pulls PyTorch ~2GB)
+# Install locally if you need transcription: pip install openai-whisper ffmpeg-python
 
 # Nostr discovery (via GitHub)
 git+https://github.com/jeffthibault/python-nostr.git
