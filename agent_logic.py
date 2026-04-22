@@ -25,6 +25,38 @@ def _get_wallet():
 
 async def handle_a2a_request(method: str, params: dict) -> dict:
     try:
+        # Route oracle, fetch, search methods to their agents
+        if method.startswith("oracle."):
+            from src.agents.price_oracle_agent.price_oracle import PriceOracleAgent
+            oracle = PriceOracleAgent()
+            if method == "oracle.price":
+                return await oracle.price([params.get("coin", "bitcoin")])
+            if method == "oracle.prices":
+                return await oracle.price(params.get("coins", ["bitcoin"]))
+            if method == "oracle.convert":
+                return await oracle.convert(params.get("sats", 0))
+            return {"error": f"Unknown oracle method '{method}'"}
+
+        if method.startswith("fetch."):
+            from src.agents.web_fetch_agent.web_fetch import WebFetchAgent
+            fetcher = WebFetchAgent()
+            if method == "fetch.url":
+                url = params.get("url")
+                if not url:
+                    return {"error": "Missing 'url'"}
+                return await fetcher.fetch(url)
+            return {"error": f"Unknown fetch method '{method}'"}
+
+        if method.startswith("search."):
+            from src.agents.search_agent.search_agent import SearchAgent
+            searcher = SearchAgent()
+            if method == "search.query":
+                q = params.get("query")
+                if not q:
+                    return {"error": "Missing 'query'"}
+                return await searcher.search(q, params.get("num_results", 10))
+            return {"error": f"Unknown search method '{method}'"}
+
         agent = _get_agent()
 
         if method != "streamfinder.search":

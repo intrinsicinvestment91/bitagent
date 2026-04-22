@@ -15,6 +15,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src.agents.polyglot_agent import router as polyglot_router
 from src.agents.coordinator_agent import router as coordinator_router
+from src.agents.price_oracle_agent import router as oracle_router
+from src.agents.web_fetch_agent import router as fetch_router
+from src.agents.search_agent import router as search_router
 from src.agents.streamfinder.streamfinder import StreamfinderAgent
 from agent_logic import handle_a2a_request, handle_payment_confirmation
 from agent_wallet import AgentWallet
@@ -68,6 +71,9 @@ app.add_middleware(
 
 app.include_router(polyglot_router, prefix="/polyglot", tags=["PolyglotAgent"])
 app.include_router(coordinator_router, prefix="/coordinator", tags=["CoordinatorAgent"])
+app.include_router(oracle_router, prefix="/oracle", tags=["PriceOracleAgent"])
+app.include_router(fetch_router, prefix="/fetch", tags=["WebFetchAgent"])
+app.include_router(search_router, prefix="/search", tags=["SearchAgent"])
 
 
 @app.get("/health")
@@ -79,7 +85,7 @@ async def health():
 async def root():
     return {
         "name": "BitAgent",
-        "agents": ["polyglot", "coordinator", "streamfinder"],
+        "agents": ["polyglot", "coordinator", "oracle", "fetch", "search", "streamfinder"],
         "docs": "/docs",
     }
 
@@ -115,8 +121,11 @@ async def wallet_balance():
 @app.get("/agents/status")
 async def agents_status():
     return {
-        "polyglot": {"status": "running", "port": None},
-        "coordinator": {"status": "running", "port": None},
+        "polyglot": {"status": "running"},
+        "coordinator": {"status": "running"},
+        "oracle": {"status": "running"},
+        "fetch": {"status": "running"},
+        "search": {"status": "running"},
         "streamfinder": {"status": "running" if streamfinder_agent else "unavailable"},
     }
 
