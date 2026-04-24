@@ -1,54 +1,98 @@
-import uuid
+import os
+import logging
+from typing import Optional
+
+import httpx
+
+logger = logging.getLogger(__name__)
+
 
 class FedimintWallet:
-    def __init__(self, wallet_id=None, federation_name="DefaultFed", owner=""):
-        self.wallet_id = wallet_id or str(uuid.uuid4())
-        self.federation_name = federation_name
-        self.owner = owner
-        self.balance = 0
-        self.received_tokens = []
+    """
+    Client for fedimint-clientd HTTP daemon.
+    Set FEDIMINT_CLIENTD_URL and FEDIMINT_CLIENTD_PASSWORD to enable.
+    If not configured, enabled=False and all methods are no-ops.
+    """
 
-    def mint_token(self, amount_sat: int, recipient: str = "unknown") -> dict:
-        token = {
-            "token_id": str(uuid.uuid4()),
-            "amount_sat": amount_sat,
-            "sender": self.owner,
-            "recipient": recipient,
-            "redeemed": False
-        }
-        self.balance -= amount_sat
-        return token
+    def __init__(self):
+        self.base_url = os.getenv("FEDIMINT_CLIENTD_URL", "").rstrip("/")
+        self.password = os.getenv("FEDIMINT_CLIENTD_PASSWORD", "")
+        self._enabled = bool(self.base_url and self.password)
 
-    def accept_token(self, token: dict, required_amount: int) -> bool:
-        if token["amount_sat"] >= required_amount and not token.get("redeemed", False):
-            token["redeemed"] = True
-            self.balance += token["amount_sat"]
-            self.received_tokens.append(token)
-            return True
-        return False
+    @property
+    def enabled(self) -> bool:
+        return self._enabled
 
-    def redeem_token(self, token: dict) -> bool:
+    def _headers(self) -> dict:
+        return {"Authorization": f"Bearer {self.password}"}
+
+    async def validate_notes(self, notes: str) -> Optional[int]:
+        """Check ecash notes are valid. Returns amount in msats, or None if invalid. Does not redeem."""
+        if not self._enabled:
+            return None
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.post(
+                    f"{self.base_url}/v2/mint/validate",
+                    json={"notes": notes},
+                    headers=self._headers(),
+                    timeout=10.0,
+                )
+                resp.raise_for_status()
+                return resp.json().get("amount_msat")
+        except Exception as e:
+            logger.error(f"Fedimint validate error: {e}")
+            return None
+
+    async def receive_notes(self, notes: str) -> Optional[int]:
+        """Redeem ecash notes into the federation wallet. Returns amount in msats or None on failure."""
+        if not self._enabled:
+            return None
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.post(
+                    f"{self.base_url}/v2/mint/reissue",
+                    json={"notes": notes},
+                    headers=self._headers(),
+                    timeout=30.0,
+                )
+                resp.raise_for_status()
+                return resp.json().get("amount_msat")
+        except Exception as e:
+            logger.error(f"Fedimint reissue error: {e}")
+            return None
+
+    async def verify_and_receive(self, notes: str, price_sats: int) -> bool:
         """
-        Accept ecash token from another agent.
+        Validate that notes cover price_sats, then redeem them.
+        Validate is non-destructive; reissue is the actual redemption.
+        Returns True on success.
         """
-        if not token.get("redeemed", False):
-            self.received_tokens.append(token)
-            self.balance += token["amount_sat"]
-            token["redeemed"] = True
-            return True
-        else:
+        amount_msat = await self.validate_notes(notes)
+        if amount_msat is None:
             return False
+        if amount_msat < price_sats * 1000:
+            logger.warning(
+                f"Ecash underpayment: got {amount_msat} msat, need {price_sats * 1000} msat"
+            )
+            return False
+        received = await self.receive_notes(notes)
+        return received is not None
 
-    def get_balance(self):
-        return self.balance
-
-    def export_wallet_state(self):
-        return {
-            "wallet_id": self.wallet_id,
-            "balance": self.balance,
-            "federation": self.federation_name,
-            "tokens": self.received_tokens
-        }
-
-    def __repr__(self):
-        return f"<FedimintWallet owner={self.owner} balance_sat={self.balance}>"
+    async def get_balance_sats(self) -> Optional[int]:
+        """Return current federation wallet balance in sats."""
+        if not self._enabled:
+            return None
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(
+                    f"{self.base_url}/v2/admin/info",
+                    headers=self._headers(),
+                    timeout=10.0,
+                )
+                resp.raise_for_status()
+                msat = resp.json().get("total_amount_msat", 0)
+                return msat // 1000
+        except Exception as e:
+            logger.error(f"Fedimint balance error: {e}")
+            return None

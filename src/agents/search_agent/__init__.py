@@ -5,10 +5,12 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from src.agents.search_agent.search_agent import SearchAgent
+from src.wallets.fedimint_wallet import FedimintWallet
 
 logger = logging.getLogger(__name__)
 agent = SearchAgent()
 router = APIRouter()
+_fedimint = FedimintWallet()
 
 _wallet = None
 
@@ -30,12 +32,16 @@ def _invoice(memo: str):
         return None
     try:
         data = wallet.create_invoice(agent.price_sats, memo)
-        return {
+        inv = {
             "payment_required": True,
             "amount_sats": agent.price_sats,
             "payment_request": data.get("bolt11") or data.get("payment_request"),
             "payment_hash": data.get("payment_hash"),
         }
+        if _fedimint.enabled:
+            inv["ecash_accepted"] = True
+            inv["ecash_amount_msats"] = agent.price_sats * 1000
+        return inv
     except Exception as e:
         logger.warning(f"Invoice creation failed: {e}")
         return None
@@ -55,6 +61,7 @@ class SearchRequest(BaseModel):
     query: str
     num_results: int = 10
     payment_hash: Optional[str] = None
+    ecash_notes: Optional[str] = None
 
 
 @router.get("/info")
@@ -64,7 +71,10 @@ async def info():
 
 @router.post("/query")
 async def query(body: SearchRequest):
-    if body.payment_hash:
+    if body.ecash_notes:
+        if not await _fedimint.verify_and_receive(body.ecash_notes, agent.price_sats):
+            raise HTTPException(402, "Ecash payment invalid or insufficient")
+    elif body.payment_hash:
         if not _verify(body.payment_hash):
             raise HTTPException(402, "Payment not verified")
     else:

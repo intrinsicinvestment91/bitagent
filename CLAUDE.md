@@ -43,17 +43,20 @@ python src/agents/coordinator_agent/run.py   # port 8001
 pytest test_agents_functionality.py
 pytest test_security_fixes.py
 pytest tests/
+
+# Single test:
+pytest tests/test_agent_wallet.py::TestAgentWallet::test_create_invoice -v
 ```
 
 ## Development Priorities
 
 Remaining gaps (already-fixed items removed):
 
-1. **Unify agent pattern** — `polyglot_agent` and `coordinator_agent` use inline payment logic; they should eventually use `@require_payment` from `src/core/payment.py`. The three new agents (oracle, fetch, search) also use inline logic — `streamfinder` is the A2A reference.
+1. **Unify agent pattern** — all agents use inline payment logic (check `payment_hash` → create invoice → verify via `AgentWallet`). The `@require_payment` decorator in `src/core/payment.py` uses an incompatible escrow/`PaymentSecurityManager` system and is **not wired to the real LNbits wallet** — do not use it until it's rewritten to call `AgentWallet` directly.
 2. **CORS config** — `ALLOWED_ORIGINS` is set in Railway env vars; verify it includes any new frontends.
 3. **Whisper/transcription** — `openai-whisper` and `ffmpeg-python` are excluded from `requirements.txt` (pulls PyTorch ~2GB, breaks cloud builds). Install locally to use transcription: `pip install openai-whisper ffmpeg-python`.
 4. **Phase 3** — WebSocket + MQTT support (needed for SDEN real-time streaming data).
-5. **Phase 4** — Stablecoin support (Taproot Assets, Fedimint USD ecash).
+5. **Phase 4** — Fedimint ecash support is live (see payment layer above). Taproot Assets/USDT on Lightning still future work.
 6. **Phase 5** — Agent registry + reputation system.
 
 **Fixed in prior session (do not re-fix):**
@@ -83,7 +86,7 @@ If no `payment_hash` is included, the endpoint returns a 402 with a Lightning in
 | `price_oracle_agent/` | 2 sats | CoinGecko primary, Binance fallback, 60s cache |
 | `web_fetch_agent/` | 25 sats | SSRF protection blocks private IP ranges |
 | `search_agent/` | 10 sats | Brave → SearXNG → DuckDuckGo (`ddgs`) fallback |
-| `streamfinder/` | 100 sats | A2A JSON-RPC reference implementation |
+| `streamfinder/` | 100 sats | A2A JSON-RPC reference implementation; **dummy DB only** — no real streaming API yet |
 
 ### MCP Server (`mcp_server.py`)
 
@@ -91,15 +94,22 @@ Exposes `translate`, `search`, `fetch_url`, `get_price`, `convert_sats` as Claud
 
 To use in Claude Code: run `/mcp` to reload, or restart the session after cloning.
 
+### Root-level modules
+
+`agent_logic.py` — top-level A2A router; dispatches `oracle.*`, `fetch.*`, `search.*`, and `streamfinder.*` methods to their agent classes. Called by `main.py`'s `/a2a` endpoint.
+
+`agent_wallet.py` — `AgentWallet` singleton used by all agents; validation deferred to `__init__()`.
+
+`lnbits_client.py` — raw REST client that `AgentWallet` wraps.
+
 ### Core framework (`src/core/`)
 - `agent.py` — `Agent` base class wiring together security, monitoring, and payments
 - `agent_server.py` — `AgentServer` wraps FastAPI; auto-generates `/info`, `/services`, `/stats`, `/security` endpoints
 - `payment.py` — `@require_payment` / `@require_authentication` decorators (target pattern for all agents)
 
 ### Payment layer
-- `lnbits_client.py` — REST client for LNbits API (invoice creation, payment status)
-- `agent_wallet.py` — `AgentWallet` wraps `LNbitsClient`; loads config from `.env`; validation deferred to `__init__()` so import doesn't crash
-- `src/wallets/fedimint_wallet.py` — simulated Fedimint ecash wallet (mint/accept/redeem tokens)
+- `src/wallets/fedimint_wallet.py` — real `fedimint-clientd` HTTP client. Set `FEDIMINT_CLIENTD_URL` + `FEDIMINT_CLIENTD_PASSWORD` to enable. When enabled, all agent 402 responses include `ecash_accepted: true` + `ecash_amount_msats`, and endpoints accept `ecash_notes` alongside `payment_hash`. Flow: `validate` (non-destructive, checks amount) → `reissue` (redeems notes into federation wallet).
+- LNbits handles all Lightning bolt11 payments (unchanged). Fedimint is an additive second path — both can be used independently.
 
 ### Security (`src/security/`)
 - `authentication.py` — JWT tokens, API key hierarchy (read → write → admin)

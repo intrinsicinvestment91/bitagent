@@ -7,11 +7,13 @@ from fastapi.responses import JSONResponse
 
 from src.agents.polyglot_agent.polyglot_agent import PolyglotAgent
 from src.security.secure_endpoints import TranslationRequest, sanitize_input
+from src.wallets.fedimint_wallet import FedimintWallet
 
 logger = logging.getLogger(__name__)
 
 agent = PolyglotAgent()
 router = APIRouter()
+_fedimint = FedimintWallet()
 
 _wallet = None
 
@@ -33,12 +35,16 @@ def _payment_invoice(price: int, memo: str):
         return None
     try:
         data = wallet.create_invoice(price, memo)
-        return {
+        inv = {
             "payment_required": True,
             "amount_sats": price,
             "payment_request": data.get("bolt11") or data.get("payment_request"),
             "payment_hash": data.get("payment_hash"),
         }
+        if _fedimint.enabled:
+            inv["ecash_accepted"] = True
+            inv["ecash_amount_msats"] = price * 1000
+        return inv
     except Exception as e:
         logger.warning(f"Invoice creation failed: {e}")
         return None
@@ -47,7 +53,7 @@ def _payment_invoice(price: int, memo: str):
 def _verify_payment(payment_hash: str) -> bool:
     wallet = _get_wallet()
     if not wallet:
-        return True  # no wallet configured — allow through
+        return True
     try:
         return wallet.check_invoice(payment_hash)
     except Exception:
@@ -69,12 +75,13 @@ async def translate(body: TranslationRequest):
     text = sanitize_input(body.text)
     source = sanitize_input(body.source_lang)
     target = sanitize_input(body.target_lang)
-    payment_hash = body.payment_hash
-
     price = agent.get_price("translate")
 
-    if payment_hash:
-        if not _verify_payment(payment_hash):
+    if body.ecash_notes:
+        if not await _fedimint.verify_and_receive(body.ecash_notes, price):
+            raise HTTPException(402, "Ecash payment invalid or insufficient")
+    elif body.payment_hash:
+        if not _verify_payment(body.payment_hash):
             raise HTTPException(402, "Payment not verified")
     else:
         invoice = _payment_invoice(price, f"Translate: {text[:40]}")
@@ -88,10 +95,13 @@ async def translate(body: TranslationRequest):
 
 
 @router.post("/transcribe")
-async def transcribe(audio: UploadFile = File(...), payment_hash: str = None):
+async def transcribe(audio: UploadFile = File(...), payment_hash: str = None, ecash_notes: str = None):
     price = agent.get_price("transcribe")
 
-    if payment_hash:
+    if ecash_notes:
+        if not await _fedimint.verify_and_receive(ecash_notes, price):
+            raise HTTPException(402, "Ecash payment invalid or insufficient")
+    elif payment_hash:
         if not _verify_payment(payment_hash):
             raise HTTPException(402, "Payment not verified")
     else:

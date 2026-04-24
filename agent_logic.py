@@ -1,11 +1,13 @@
 import logging
 from src.agents.streamfinder.streamfinder import StreamfinderAgent
 from src.security.secure_endpoints import sanitize_input
+from src.wallets.fedimint_wallet import FedimintWallet
 
 logger = logging.getLogger(__name__)
 
 _agent = None
 _wallet = None
+_fedimint = FedimintWallet()
 
 
 def _get_agent():
@@ -67,7 +69,13 @@ async def handle_a2a_request(method: str, params: dict) -> dict:
             return {"error": "Missing 'query' parameter"}
 
         query = sanitize_input(query, max_length=500)
+        ecash_notes = params.get("ecash_notes")
         payment_hash = params.get("payment_hash")
+
+        if ecash_notes:
+            if await _fedimint.verify_and_receive(ecash_notes, agent.get_price()):
+                return agent.perform_search(query)
+            return {"error": "Ecash payment invalid or insufficient"}
 
         if payment_hash:
             wallet = _get_wallet()
@@ -85,12 +93,16 @@ async def handle_a2a_request(method: str, params: dict) -> dict:
             payment_request = invoice_data.get("bolt11") or invoice_data.get("payment_request")
             if not payment_hash or not payment_request:
                 raise ValueError("Invalid invoice response")
-            return {
+            inv = {
                 "payment_required": True,
                 "amount_sats": agent.get_price(),
                 "payment_request": payment_request,
                 "payment_hash": payment_hash,
             }
+            if _fedimint.enabled:
+                inv["ecash_accepted"] = True
+                inv["ecash_amount_msats"] = agent.get_price() * 1000
+            return inv
         except Exception:
             return agent.perform_search(query)
 

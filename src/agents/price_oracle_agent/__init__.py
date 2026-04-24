@@ -5,10 +5,12 @@ from pydantic import BaseModel
 from typing import Optional
 
 from src.agents.price_oracle_agent.price_oracle import PriceOracleAgent
+from src.wallets.fedimint_wallet import FedimintWallet
 
 logger = logging.getLogger(__name__)
 agent = PriceOracleAgent()
 router = APIRouter()
+_fedimint = FedimintWallet()
 
 _wallet = None
 
@@ -30,12 +32,16 @@ def _invoice(price: int, memo: str):
         return None
     try:
         data = wallet.create_invoice(price, memo)
-        return {
+        inv = {
             "payment_required": True,
             "amount_sats": price,
             "payment_request": data.get("bolt11") or data.get("payment_request"),
             "payment_hash": data.get("payment_hash"),
         }
+        if _fedimint.enabled:
+            inv["ecash_accepted"] = True
+            inv["ecash_amount_msats"] = price * 1000
+        return inv
     except Exception as e:
         logger.warning(f"Invoice creation failed: {e}")
         return None
@@ -54,10 +60,12 @@ def _verify(payment_hash: str) -> bool:
 class ConvertRequest(BaseModel):
     sats: int
     payment_hash: Optional[str] = None
+    ecash_notes: Optional[str] = None
 
 class BatchRequest(BaseModel):
     coins: list[str]
     payment_hash: Optional[str] = None
+    ecash_notes: Optional[str] = None
 
 
 @router.get("/info")
@@ -86,7 +94,10 @@ async def price_batch(body: BatchRequest):
     coins = [c.lower() for c in body.coins[:10]]
     price = agent.price_sats["batch"]
 
-    if body.payment_hash:
+    if body.ecash_notes:
+        if not await _fedimint.verify_and_receive(body.ecash_notes, price):
+            raise HTTPException(402, "Ecash payment invalid or insufficient")
+    elif body.payment_hash:
         if not _verify(body.payment_hash):
             raise HTTPException(402, "Payment not verified")
     else:
@@ -101,7 +112,10 @@ async def price_batch(body: BatchRequest):
 async def convert(body: ConvertRequest):
     price = agent.price_sats["convert"]
 
-    if body.payment_hash:
+    if body.ecash_notes:
+        if not await _fedimint.verify_and_receive(body.ecash_notes, price):
+            raise HTTPException(402, "Ecash payment invalid or insufficient")
+    elif body.payment_hash:
         if not _verify(body.payment_hash):
             raise HTTPException(402, "Payment not verified")
     else:

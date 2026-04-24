@@ -166,6 +166,7 @@ class TranslationRequest(BaseModel):
     source_lang: str = "auto"
     target_lang: str = "en"
     payment_hash: Optional[str] = None
+    ecash_notes: Optional[str] = None
     
     @validator('text')
     def validate_text(cls, v):
