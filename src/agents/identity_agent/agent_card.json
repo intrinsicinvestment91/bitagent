@@ -1,0 +1,26 @@
+{
+  "name": "IdentityAgent",
+  "description": "Paid NIP-05 registration and machine-readable trust lookup for BitAgent requesters.",
+  "methods": [
+    "identity.register_nip05",
+    "identity.get_identity",
+    "identity.list_verified",
+    "identity.search",
+    "identity.get_trust_signal"
+  ],
+  "pricing": {
+    "identity.register_nip05": 1000,
+    "identity.get_identity": 10,
+    "identity.list_verified": 25,
+    "identity.search": 25,
+    "identity.get_trust_signal": 10
+  },
+  "endpoint": "/a2a",
+  "payment_support": {
+    "lightning": true,
+    "ecash": false,
+    "notes": "register_nip05 is always paid; query methods can be free in dev mode when IDENTITY_FREE_QUERIES=true."
+  },
+  "nip05_endpoint": "/.well-known/nostr.json?name=<handle>",
+  "warning": "Trust score is heuristic and not KYC."
+}

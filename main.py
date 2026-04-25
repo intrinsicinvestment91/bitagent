@@ -8,6 +8,7 @@ Start9 deployment uses start9_server.py instead.
 import os
 import logging
 import asyncio
+from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, HTTPException
@@ -19,6 +20,7 @@ from src.agents.price_oracle_agent import router as oracle_router
 from src.agents.web_fetch_agent import router as fetch_router
 from src.agents.search_agent import router as search_router
 from src.agents.streamfinder.streamfinder import StreamfinderAgent
+from src.agents.identity_agent.store import get_identity_by_handle
 from agent_logic import handle_a2a_request, handle_payment_confirmation
 from agent_wallet import AgentWallet
 
@@ -85,8 +87,41 @@ async def health():
 async def root():
     return {
         "name": "BitAgent",
-        "agents": ["polyglot", "coordinator", "oracle", "fetch", "search", "streamfinder"],
+        "agents": ["polyglot", "coordinator", "oracle", "fetch", "search", "streamfinder", "identity"],
         "docs": "/docs",
+    }
+
+
+def _is_not_expired(expires_at: str | None) -> bool:
+    if not expires_at:
+        return True
+    try:
+        parsed = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+    except ValueError:
+        return True
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed >= datetime.now(timezone.utc)
+
+
+@app.get("/.well-known/nostr.json")
+async def nostr_well_known(request: Request, name: str | None = None):
+    if not name:
+        return {"names": {}}
+
+    domain = request.url.hostname or ""
+    identity = get_identity_by_handle(name, domain)
+    if not identity:
+        return {"names": {}}
+    if not identity.get("paid") or not identity.get("verified"):
+        return {"names": {}}
+    if not _is_not_expired(identity.get("expires_at")):
+        return {"names": {}}
+
+    pubkey = identity["pubkey"]
+    return {
+        "names": {name: pubkey},
+        "relays": {pubkey: identity.get("relays", [])},
     }
 
 
@@ -123,6 +158,7 @@ async def agents_status():
         "fetch": {"status": "running"},
         "search": {"status": "running"},
         "streamfinder": {"status": "running" if streamfinder_agent else "unavailable"},
+        "identity": {"status": "running"},
     }
 
 

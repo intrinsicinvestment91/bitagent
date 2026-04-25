@@ -1,4 +1,5 @@
 import logging
+import os
 from src.agents.streamfinder.streamfinder import StreamfinderAgent
 from src.security.secure_endpoints import sanitize_input
 from src.wallets.fedimint_wallet import FedimintWallet
@@ -23,6 +24,42 @@ def _get_wallet():
         from agent_wallet import AgentWallet
         _wallet = AgentWallet()
     return _wallet
+
+
+def _identity_checks_enabled() -> bool:
+    return os.getenv("IDENTITY_REQUIRE_FOR_PAID_SERVICES", "false").lower() == "true"
+
+
+def _identity_min_trust_score() -> float:
+    raw = os.getenv("IDENTITY_MIN_TRUST_SCORE", "0.25")
+    try:
+        return float(raw)
+    except ValueError:
+        return 0.25
+
+
+async def _enforce_identity_trust_for_paid_request(params: dict) -> dict | None:
+    if not _identity_checks_enabled():
+        return None
+
+    requester_pubkey = params.get("requester_pubkey")
+    if not requester_pubkey:
+        return {"error": "Requester identity required: missing 'requester_pubkey'"}
+
+    from src.agents.identity_agent import IdentityAgent
+
+    identity_agent = IdentityAgent()
+    requester_identity = await identity_agent.get_identity(pubkey=requester_pubkey)
+    if requester_identity.get("error"):
+        return {"error": "Requester identity not found"}
+
+    trust = await identity_agent.get_trust_signal(pubkey=requester_pubkey)
+    trust_score = float(trust.get("trust_score", 0.0))
+    min_score = _identity_min_trust_score()
+    if trust_score < min_score:
+        return {"error": f"Requester trust score {trust_score} below minimum {min_score}"}
+
+    return None
 
 
 async def handle_a2a_request(method: str, params: dict) -> dict:
@@ -59,6 +96,62 @@ async def handle_a2a_request(method: str, params: dict) -> dict:
                 return await searcher.search(q, params.get("num_results", 10))
             return {"error": f"Unknown search method '{method}'"}
 
+        if method.startswith("identity."):
+            from src.agents.identity_agent import IdentityAgent
+
+            identity = IdentityAgent()
+            free_queries = os.getenv("IDENTITY_FREE_QUERIES", "false").lower() == "true"
+
+            if method == "identity.register_nip05":
+                return await identity.register_nip05(
+                    pubkey=params.get("pubkey", ""),
+                    handle=params.get("handle", ""),
+                    domain=params.get("domain", ""),
+                    relays=params.get("relays"),
+                    payment_hash=params.get("payment_hash"),
+                )
+
+            if method not in {
+                "identity.get_identity",
+                "identity.list_verified",
+                "identity.search",
+                "identity.get_trust_signal",
+            }:
+                return {"error": f"Unknown identity method '{method}'"}
+
+            if not free_queries:
+                payment_hash = params.get("payment_hash")
+                if payment_hash:
+                    wallet = _get_wallet()
+                    if not wallet.check_invoice(payment_hash):
+                        return {"error": "Payment not verified"}
+                else:
+                    wallet = _get_wallet()
+                    amount = int(identity.get_price(method))
+                    invoice_data = wallet.create_invoice(
+                        amount=amount,
+                        memo=f"Identity query: {method}",
+                    )
+                    created_hash = invoice_data.get("payment_hash")
+                    payment_request = invoice_data.get("bolt11") or invoice_data.get("payment_request")
+                    if not created_hash or not payment_request:
+                        return {"error": "Unable to create payment invoice"}
+                    return {
+                        "payment_required": True,
+                        "amount_sats": amount,
+                        "payment_request": payment_request,
+                        "payment_hash": created_hash,
+                    }
+
+            if method == "identity.get_identity":
+                return await identity.get_identity(pubkey=params.get("pubkey", ""))
+            if method == "identity.list_verified":
+                return await identity.list_verified()
+            if method == "identity.search":
+                return await identity.search(query=params.get("query", ""))
+            if method == "identity.get_trust_signal":
+                return await identity.get_trust_signal(pubkey=params.get("pubkey", ""))
+
         agent = _get_agent()
 
         if method != "streamfinder.search":
@@ -67,6 +160,10 @@ async def handle_a2a_request(method: str, params: dict) -> dict:
         query = params.get("query")
         if not query:
             return {"error": "Missing 'query' parameter"}
+
+        identity_gate_error = await _enforce_identity_trust_for_paid_request(params)
+        if identity_gate_error:
+            return identity_gate_error
 
         query = sanitize_input(query, max_length=500)
         ecash_notes = params.get("ecash_notes")

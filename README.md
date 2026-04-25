@@ -76,6 +76,7 @@ curl -X POST http://localhost:8000/polyglot/translate \
 | **WebFetchAgent** | `/fetch/url` | Fetch & clean any public web page | 25 sats |
 | **SearchAgent** | `/search/query` | Web search (Brave → SearXNG → DDG) | 10 sats |
 | **StreamfinderAgent** | `/a2a` (JSON-RPC) | Streaming availability search | 100 sats |
+| **IdentityAgent** | `/a2a` (JSON-RPC) + `/.well-known/nostr.json` | Paid NIP-05 registration + trust lookup | 1000 sats (register), 10-25 sats (queries) |
 
 All agents implement the **A2A JSON-RPC protocol** — they can call each other without human involvement.
 
@@ -136,6 +137,31 @@ mcp_server.py                 # MCP stdio server — exposes agents as Claude to
 ```
 
 **Adding a new agent takes ~50 lines.** Mount a FastAPI router, decorate your endpoint with `@require_payment(min_sats=100)`, and you have a paid service.
+
+---
+
+## IdentityAgent
+
+IdentityAgent adds:
+
+- paid `identity.register_nip05` flow
+- machine-readable `identity.get_identity` and `identity.get_trust_signal`
+- dynamic NIP-05 resolution at `/.well-known/nostr.json?name=<handle>`
+
+Example trust lookup:
+
+```bash
+curl -X POST http://localhost:8000/a2a \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 11,
+    "method": "identity.get_trust_signal",
+    "params": { "pubkey": "npub1examplepubkey" }
+  }'
+```
+
+See [IdentityAgent docs](docs/IDENTITY_AGENT.md) for full registration/payment flow, NIP-05 examples, and security warnings.
 
 ---
 
