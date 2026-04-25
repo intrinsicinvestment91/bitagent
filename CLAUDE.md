@@ -40,13 +40,21 @@ python src/agents/coordinator_agent/run.py   # port 8001
 
 **Tests:**
 ```bash
-pytest test_agents_functionality.py
-pytest test_security_fixes.py
-pytest tests/
+# Root-level tests (broad integration / live-wallet / security):
+pytest tests/test_agents_functionality.py   # PolyglotAgent + CoordinatorAgent
+pytest tests/test_security_fixes.py         # auth, input sanitization, payment checks
+pytest tests/test_live_deployment.py        # production validation (needs real env vars)
+
+# Subdirectory tests:
+pytest tests/agents/         # CameraFeedBot, DataBot unit tests
+pytest tests/integration/    # full agent workflow (registration, DID, discovery)
+pytest tests/security/       # encryption, auth, audit logging
 
 # Single test:
 pytest tests/test_agent_wallet.py::TestAgentWallet::test_create_invoice -v
 ```
+
+No conftest.py / pytest fixtures — tests use `setup_method()` and inline `unittest.mock`.
 
 ## Development Priorities
 
@@ -88,6 +96,36 @@ If no `payment_hash` is included, the endpoint returns a 402 with a Lightning in
 | `search_agent/` | 10 sats | Brave → SearXNG → DuckDuckGo (`ddgs`) fallback |
 | `streamfinder/` | 100 sats | A2A JSON-RPC reference implementation; **dummy DB only** — no real streaming API yet |
 
+**Not wired into `main.py`** — the following files exist in `src/agents/` but are not live endpoints:
+- `camera_feed_bot.py`, `databot.py`, `service_agent.py` — concrete `BaseAgent` subclasses used in `examples/` and `tests/agents/` only
+- `consumer_agent.py` — stub mock (no `BaseAgent` inheritance, print-only logic)
+- `cambot.py`, `logibot.py`, `init.py` — empty files, future placeholders
+
+### Adding a new agent
+
+All live agents use this pattern in their `__init__.py` for wallet access:
+
+```python
+from src.wallets.fedimint_wallet import FedimintWallet
+
+_fedimint = FedimintWallet()   # eager — safe, no required args
+_wallet = None                  # lazy — AgentWallet throws if LNBITS_* not set
+
+def _get_wallet():
+    global _wallet
+    if _wallet is None:
+        try:
+            from agent_wallet import AgentWallet
+            _wallet = AgentWallet()
+        except Exception:
+            pass
+    return _wallet
+```
+
+`AgentWallet` is lazy because it raises `ValueError` on missing `LNBITS_API_KEY` / `LNBITS_URL`, which would crash dev-mode startup. Returning `None` from `_get_wallet()` disables Lightning payments gracefully. `FedimintWallet` is always instantiated but its `enabled` property gates actual ecash use.
+
+See `src/agents/search_agent/__init__.py` as the canonical reference — `web_fetch_agent` and `price_oracle_agent` follow the same pattern exactly.
+
 ### MCP Server (`mcp_server.py`)
 
 Exposes `translate`, `search`, `fetch_url`, `get_price`, `convert_sats` as Claude tools via stdio MCP. Imports agent modules directly — no HTTP, no payment gate. Each result includes `cost_sats`. Configured via `.mcp.json`.
@@ -101,6 +139,8 @@ To use in Claude Code: run `/mcp` to reload, or restart the session after clonin
 `agent_wallet.py` — `AgentWallet` singleton used by all agents; validation deferred to `__init__()`.
 
 `lnbits_client.py` — raw REST client that `AgentWallet` wraps.
+
+**Wallet tiers:** `_SimWallet` (in `src/agents/base_agent.py`) is the default for `BaseAgent` subclasses — in-memory, no real payments, used for examples and tests. `AgentWallet` (root `agent_wallet.py`) handles Lightning via LNbits and is lazy-loaded by live agents. `FedimintWallet` (`src/wallets/fedimint_wallet.py`) handles ecash and is eagerly instantiated (safe, no required args) — its `enabled` property returns `False` if not configured.
 
 ### Core framework (`src/core/`)
 - `agent.py` — `Agent` base class wiring together security, monitoring, and payments

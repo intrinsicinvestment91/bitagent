@@ -97,10 +97,6 @@ async def a2a_endpoint(request: Request):
     params = body.get("params", {})
     request_id = body.get("id", 1)
 
-    if method.startswith("streamfinder.") and streamfinder_agent:
-        result = await streamfinder_agent.handle_a2a(method, params)
-        return {"jsonrpc": "2.0", "result": result, "id": request_id}
-
     result = await handle_a2a_request(method, params)
     return {"jsonrpc": "2.0", "result": result, "id": request_id}
 
