@@ -8,6 +8,7 @@ Start9 deployment uses start9_server.py instead.
 import os
 import logging
 import asyncio
+import time
 from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 
@@ -31,6 +32,90 @@ streamfinder_agent: StreamfinderAgent | None = None
 payment_wallet: AgentWallet | None = None
 
 
+def _build_base_url() -> str:
+    if domain := os.getenv("RAILWAY_PUBLIC_DOMAIN"):
+        return f"https://{domain}"
+    return os.getenv("PUBLIC_URL", "http://localhost:8000")
+
+
+async def _broadcast_agents(base_url: str, nostr_private_key: str | None) -> None:
+    try:
+        from src.network.p2p_discovery import P2PDiscoveryManager, AgentInfo
+
+        manager = P2PDiscoveryManager(nostr_private_key)
+        pubkey = manager.nostr_discovery.public_key.hex()
+
+        agents = [
+            AgentInfo(
+                agent_id="bitagent-polyglot",
+                name="PolyglotAgent",
+                description="Translation and transcription (100–250 sats)",
+                endpoint=f"{base_url}/polyglot",
+                services=["translate", "transcribe"],
+                public_key=pubkey,
+                protocol="lightning+nostr",
+                last_seen=time.time(),
+            ),
+            AgentInfo(
+                agent_id="bitagent-coordinator",
+                name="CoordinatorAgent",
+                description="Multi-agent workflow coordinator (350 sats)",
+                endpoint=f"{base_url}/coordinator",
+                services=["coordinate"],
+                public_key=pubkey,
+                protocol="lightning+nostr",
+                last_seen=time.time(),
+            ),
+            AgentInfo(
+                agent_id="bitagent-oracle",
+                name="PriceOracleAgent",
+                description="Crypto price lookups via CoinGecko/Binance (2 sats)",
+                endpoint=f"{base_url}/oracle",
+                services=["price", "prices", "convert"],
+                public_key=pubkey,
+                protocol="lightning+nostr",
+                last_seen=time.time(),
+            ),
+            AgentInfo(
+                agent_id="bitagent-fetch",
+                name="WebFetchAgent",
+                description="Fetch web content with SSRF protection (25 sats)",
+                endpoint=f"{base_url}/fetch",
+                services=["fetch.url"],
+                public_key=pubkey,
+                protocol="lightning+nostr",
+                last_seen=time.time(),
+            ),
+            AgentInfo(
+                agent_id="bitagent-search",
+                name="SearchAgent",
+                description="Web search via Brave/SearXNG/DDG (10 sats)",
+                endpoint=f"{base_url}/search",
+                services=["search.query"],
+                public_key=pubkey,
+                protocol="lightning+nostr",
+                last_seen=time.time(),
+            ),
+            AgentInfo(
+                agent_id="bitagent-identity",
+                name="IdentityAgent",
+                description="NIP-05 registration and trust scoring (10–1000 sats)",
+                endpoint=f"{base_url}/a2a",
+                services=["identity.register_nip05", "identity.get_identity", "identity.get_trust_signal"],
+                public_key=pubkey,
+                protocol="lightning+nostr",
+                last_seen=time.time(),
+            ),
+        ]
+
+        for agent_info in agents:
+            await manager.register_agent(agent_info)
+
+        logger.info("Broadcasted %d agents to Nostr relays", len(agents))
+    except Exception as e:
+        logger.warning("Nostr agent broadcast failed: %s", e)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global streamfinder_agent, payment_wallet
@@ -45,6 +130,11 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Wallet init failed (payments disabled): {e}")
         payment_wallet = None
+
+    base_url = _build_base_url()
+    nostr_key = os.getenv("NOSTR_PRIVATE_KEY")
+    asyncio.create_task(_broadcast_agents(base_url, nostr_key))
+    logger.info("Nostr broadcast scheduled for %s", base_url)
 
     yield
 
