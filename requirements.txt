@@ -6,7 +6,6 @@ python-multipart
 
 # LNbits integration
 requests
-pylnbits
 cryptography
 python-dotenv
 
