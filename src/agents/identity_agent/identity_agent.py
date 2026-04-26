@@ -16,6 +16,7 @@ from src.agents.identity_agent.store import (
     upsert_identity_metadata,
 )
 from src.agents.identity_agent.trust import calculate_trust_score
+from src.reputation import BaseReputationProvider, load_reputation_provider_from_env
 
 
 class IdentityAgent(BaseAgent):
@@ -41,6 +42,10 @@ class IdentityAgent(BaseAgent):
         self.description = "Identity and verification services for BitAgent participants."
         self.db_path = kwargs.get("db_path")
         self.wallet = kwargs.get("wallet")
+        self.reputation_provider: BaseReputationProvider | None = kwargs.get("reputation_provider")
+        self.reputation_namespace = kwargs.get("reputation_namespace", "payment.reliability")
+        if self.reputation_provider is None:
+            self.reputation_provider, self.reputation_namespace = load_reputation_provider_from_env()
         self.services = {
             "identity.register_nip05": "Register and verify a NIP-05 identifier",
             "identity.get_identity": "Get identity details by pubkey",
@@ -204,10 +209,26 @@ class IdentityAgent(BaseAgent):
             tags=metadata.get("tags", []),
         )
         trust_score = trust["score"]
-        return {
+        result = {
             "pubkey": pubkey,
             "trusted": trust_score >= 0.5,
             "trust_score": trust_score,
             "basis": trust["basis"],
             "warning": "Trust score is heuristic and not KYC.",
         }
+        if self.reputation_provider is not None:
+            try:
+                result["reputation"] = self.reputation_provider.get_score(
+                    subject_pubkey=pubkey,
+                    namespace=self.reputation_namespace,
+                )
+            except Exception as e:
+                logging.warning("Reputation provider error: %s", e)
+                result["reputation"] = {
+                    "provider": getattr(self.reputation_provider, "provider_name", "unknown"),
+                    "namespace": self.reputation_namespace,
+                    "subject_pubkey": pubkey,
+                    "available": False,
+                    "reason": "provider_error",
+                }
+        return result

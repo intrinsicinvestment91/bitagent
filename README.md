@@ -148,6 +148,12 @@ IdentityAgent adds:
 - machine-readable `identity.get_identity` and `identity.get_trust_signal`
 - dynamic NIP-05 resolution at `/.well-known/nostr.json?name=<handle>`
 
+Optional reputation provider scaffold (Issue #4):
+
+- `BITAGENT_REPUTATION_ENABLED=true` enables external reputation payloads on `identity.get_trust_signal`
+- `BITAGENT_REPUTATION_PROVIDER=kind_30085` enables the Kind 30085 adapter scaffold (safe fallback, no relay scoring yet)
+- `BITAGENT_REPUTATION_PROVIDER=mock` returns deterministic test scores for local/dev validation
+
 Example trust lookup:
 
 ```bash
