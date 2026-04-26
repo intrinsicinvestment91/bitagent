@@ -6,6 +6,14 @@ Test script to verify PolyglotAgent and CoordinatorAgent functionality
 import sys
 import os
 import asyncio
+from unittest.mock import Mock
+
+from src.core.payment import (
+    FedimintPaymentProvider,
+    LNbitsPaymentProvider,
+    PaymentProvider,
+    get_payment_provider,
+)
 sys.path.append('.')
 
 async def test_polyglot_agent():
@@ -115,3 +123,42 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
+
+def test_lnbits_payment_provider_protocol_and_methods():
+    mock_client = Mock()
+    mock_client.create_invoice.return_value = {"payment_hash": "hash_1", "bolt11": "lnbc1"}
+    mock_client.check_invoice.return_value = True
+    mock_client.pay_invoice.return_value = True
+
+    provider = LNbitsPaymentProvider(mock_client)
+    assert isinstance(provider, PaymentProvider)
+    assert provider.create_invoice(100, "memo") == {"payment_hash": "hash_1", "bolt11": "lnbc1"}
+    assert provider.verify_payment("hash_1") is True
+    assert provider.receive("token", 100) is True
+    assert provider.send(100, "lnbc_dest") is True
+
+
+def test_fedimint_payment_provider_protocol_and_methods():
+    mock_wallet = Mock()
+    mock_wallet.create_invoice.return_value = {"invoice": "fm_inv_1"}
+    mock_wallet.verify_invoice.return_value = True
+    mock_wallet.receive_token.return_value = True
+    mock_wallet.send_token.return_value = True
+
+    provider = FedimintPaymentProvider(mock_wallet)
+    assert isinstance(provider, PaymentProvider)
+    assert provider.create_invoice(50, "memo") == {"invoice": "fm_inv_1"}
+    assert provider.verify_payment("fm_inv_1") is True
+    assert provider.receive("ecash_token", 50) is True
+    assert provider.send(50, "destination") is True
+
+
+def test_get_payment_provider_factory():
+    mock_client = Mock()
+    lnbits_provider = get_payment_provider("lnbits", mock_client)
+    assert isinstance(lnbits_provider, LNbitsPaymentProvider)
+
+    mock_wallet = Mock()
+    fedimint_provider = get_payment_provider("fedimint", mock_wallet)
+    assert isinstance(fedimint_provider, FedimintPaymentProvider)
