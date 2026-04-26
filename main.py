@@ -22,6 +22,7 @@ from src.agents.web_fetch_agent import router as fetch_router
 from src.agents.search_agent import router as search_router
 from src.agents.streamfinder.streamfinder import StreamfinderAgent
 from src.agents.identity_agent.store import get_identity_by_handle
+from src.core.request import validate_request_envelope
 from agent_logic import handle_a2a_request, handle_payment_confirmation
 from agent_wallet import AgentWallet
 
@@ -30,6 +31,17 @@ logger = logging.getLogger(__name__)
 
 streamfinder_agent: StreamfinderAgent | None = None
 payment_wallet: AgentWallet | None = None
+REQUEST_ENVELOPE_METRICS = {
+    "valid": 0,
+    "invalid": 0,
+}
+
+
+def record_request_envelope_metric(is_valid: bool) -> None:
+    if is_valid:
+        REQUEST_ENVELOPE_METRICS["valid"] += 1
+    else:
+        REQUEST_ENVELOPE_METRICS["invalid"] += 1
 
 
 def _build_base_url() -> str:
@@ -218,6 +230,10 @@ async def nostr_well_known(request: Request, name: str | None = None):
 @app.post("/a2a")
 async def a2a_endpoint(request: Request):
     body = await request.json()
+    is_valid_envelope = validate_request_envelope(body)
+    record_request_envelope_metric(is_valid_envelope)
+    if not is_valid_envelope:
+        logger.warning("Invalid request envelope received; continuing in compatibility mode")
     method = body.get("method", "")
     params = body.get("params", {})
     request_id = body.get("id", 1)
