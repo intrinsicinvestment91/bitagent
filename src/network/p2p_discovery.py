@@ -15,11 +15,16 @@ import aiohttp
 import logging
 
 # Nostr imports
-from nostr.event import Event, EventKind
-from nostr.key import PrivateKey, PublicKey
-from nostr.relay_manager import RelayManager
-from nostr.filter import Filter, Filters
-from nostr.message_type import ClientMessageType
+try:
+    from nostr.event import Event, EventKind
+    from nostr.key import PrivateKey, PublicKey
+    from nostr.relay_manager import RelayManager
+    from nostr.filter import Filter, Filters
+    from nostr.message_type import ClientMessageType
+    NOSTR_IMPORT_ERROR = None
+except Exception as nostr_import_error:
+    Event = EventKind = PrivateKey = PublicKey = RelayManager = Filter = Filters = ClientMessageType = None
+    NOSTR_IMPORT_ERROR = nostr_import_error
 
 class DiscoveryProtocol(Enum):
     NOSTR = "nostr"
@@ -160,6 +165,8 @@ class EnhancedNostrDiscovery:
     """Enhanced Nostr-based agent discovery with filtering and reputation."""
     
     def __init__(self, private_key: str = None):
+        if NOSTR_IMPORT_ERROR is not None:
+            raise RuntimeError(f"Nostr discovery unavailable: {NOSTR_IMPORT_ERROR}")
         self.private_key = PrivateKey(bytes.fromhex(private_key)) if private_key else PrivateKey()
         self.public_key = self.private_key.public_key
         self.relay_manager = RelayManager()
@@ -295,9 +302,15 @@ class P2PDiscoveryManager:
     
     def __init__(self, private_key: str = None):
         self.dht_node = DHTNode()
-        self.nostr_discovery = EnhancedNostrDiscovery(private_key)
+        self.nostr_discovery = None
+        if NOSTR_IMPORT_ERROR is None:
+            self.nostr_discovery = EnhancedNostrDiscovery(private_key)
+        else:
+            logging.warning("Nostr discovery disabled due to import error: %s", NOSTR_IMPORT_ERROR)
         self.discovered_agents = {}
-        self.discovery_protocols = [DiscoveryProtocol.NOSTR, DiscoveryProtocol.DHT]
+        self.discovery_protocols = [DiscoveryProtocol.DHT]
+        if self.nostr_discovery is not None:
+            self.discovery_protocols.append(DiscoveryProtocol.NOSTR)
         
     async def register_agent(self, agent_info: AgentInfo):
         """Register an agent for discovery."""
@@ -305,7 +318,8 @@ class P2PDiscoveryManager:
         await self.dht_node.store_agent_info(agent_info)
         
         # Broadcast via Nostr
-        await self.nostr_discovery.broadcast_agent(agent_info)
+        if self.nostr_discovery is not None:
+            await self.nostr_discovery.broadcast_agent(agent_info)
         
         # Cache locally
         self.discovered_agents[agent_info.agent_id] = agent_info
@@ -327,8 +341,9 @@ class P2PDiscoveryManager:
         # Use Nostr discovery
         if DiscoveryProtocol.NOSTR in self.discovery_protocols:
             try:
-                nostr_agents = await self.nostr_discovery.discover_agents(query)
-                all_agents.extend(nostr_agents)
+                if self.nostr_discovery is not None:
+                    nostr_agents = await self.nostr_discovery.discover_agents(query)
+                    all_agents.extend(nostr_agents)
             except Exception as e:
                 logging.warning(f"Nostr discovery failed: {e}")
         

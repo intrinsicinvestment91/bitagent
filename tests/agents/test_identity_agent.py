@@ -3,6 +3,7 @@ import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 from src.agents.identity_agent import IdentityAgent
 from src.agents.identity_agent.store import upsert_identity_metadata
@@ -273,6 +274,74 @@ class TestIdentityAgent(unittest.TestCase):
 
         trust = self._run(agent.get_trust_signal(pubkey="pubkey_cap"))
         self.assertEqual(trust["trust_score"], 1.0)
+
+    def test_reputation_provider_disabled_by_default(self):
+        agent = IdentityAgent(db_path=self.db_path, wallet=self.wallet)
+        self._create_verified_identity(agent, pubkey="pubkey_default_rep", handle="repdefault")
+
+        trust = self._run(agent.get_trust_signal(pubkey="pubkey_default_rep"))
+        self.assertNotIn("reputation", trust)
+
+    def test_kind30085_provider_reports_unavailable_scaffold(self):
+        with patch.dict(
+            "os.environ",
+            {
+                "BITAGENT_REPUTATION_ENABLED": "true",
+                "BITAGENT_REPUTATION_PROVIDER": "kind_30085",
+                "BITAGENT_REPUTATION_NAMESPACE": "payment.reliability",
+            },
+            clear=False,
+        ):
+            agent = IdentityAgent(db_path=self.db_path, wallet=self.wallet)
+            self._create_verified_identity(agent, pubkey="pubkey_kind30085", handle="repkind")
+            trust = self._run(agent.get_trust_signal(pubkey="pubkey_kind30085"))
+
+        self.assertIn("reputation", trust)
+        self.assertFalse(trust["reputation"]["available"])
+        self.assertEqual(trust["reputation"]["provider"], "kind_30085")
+        self.assertEqual(trust["reputation"]["reason"], "kind_30085_provider_not_implemented")
+
+    def test_mock_reputation_provider_returns_score(self):
+        with patch.dict(
+            "os.environ",
+            {
+                "BITAGENT_REPUTATION_ENABLED": "true",
+                "BITAGENT_REPUTATION_PROVIDER": "mock",
+                "BITAGENT_REPUTATION_NAMESPACE": "payment.reliability",
+                "BITAGENT_MOCK_REPUTATION_SCORE": "0.82",
+                "BITAGENT_MOCK_REPUTATION_CONFIDENCE": "0.91",
+            },
+            clear=False,
+        ):
+            agent = IdentityAgent(db_path=self.db_path, wallet=self.wallet)
+            self._create_verified_identity(agent, pubkey="pubkey_mockrep", handle="repmock")
+            trust = self._run(agent.get_trust_signal(pubkey="pubkey_mockrep"))
+
+        self.assertIn("reputation", trust)
+        self.assertTrue(trust["reputation"]["available"])
+        self.assertEqual(trust["reputation"]["provider"], "mock")
+        self.assertEqual(trust["reputation"]["score"], 0.82)
+        self.assertEqual(trust["reputation"]["confidence"], 0.91)
+
+    def _create_verified_identity(self, agent: IdentityAgent, pubkey: str, handle: str) -> None:
+        pending = self._run(
+            agent.register_nip05(
+                pubkey=pubkey,
+                handle=handle,
+                domain="example.com",
+                relays=["wss://relay.damus.io"],
+            )
+        )
+        self.wallet.mark_paid(pending["payment_hash"])
+        self._run(
+            agent.register_nip05(
+                pubkey=pubkey,
+                handle=handle,
+                domain="example.com",
+                relays=["wss://relay.damus.io"],
+                payment_hash=pending["payment_hash"],
+            )
+        )
 
     def _run(self, coro):
         import asyncio

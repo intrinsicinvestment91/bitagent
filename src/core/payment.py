@@ -6,7 +6,7 @@ Provides secure payment integration with escrow and fraud detection.
 import functools
 import time
 import logging
-from typing import Callable, Any, Dict, Optional
+from typing import Callable, Any, Dict, Optional, Protocol, runtime_checkable
 from fastapi import Request, HTTPException, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
@@ -25,6 +25,56 @@ payment_security = PaymentSecurityManager()
 audit_logger = AuditLogger()
 
 security_scheme = HTTPBearer()
+
+
+@runtime_checkable
+class PaymentProvider(Protocol):
+    def create_invoice(self, amount: int, memo: str = "") -> dict: ...
+    def verify_payment(self, invoice_id: str) -> bool: ...
+    def receive(self, token: str, amount: int) -> bool: ...
+    def send(self, amount: int, destination: str) -> bool: ...
+
+
+class LNbitsPaymentProvider:
+    def __init__(self, client):
+        self.client = client
+
+    def create_invoice(self, amount: int, memo: str = "") -> dict:
+        return self.client.create_invoice(amount, memo)
+
+    def verify_payment(self, invoice_id: str) -> bool:
+        return self.client.check_invoice(invoice_id)
+
+    def receive(self, token: str, amount: int) -> bool:
+        return True
+
+    def send(self, amount: int, destination: str) -> bool:
+        return self.client.pay_invoice(destination)
+
+
+class FedimintPaymentProvider:
+    def __init__(self, wallet):
+        self.wallet = wallet
+
+    def create_invoice(self, amount: int, memo: str = "") -> dict:
+        return self.wallet.create_invoice(amount)
+
+    def verify_payment(self, invoice_id: str) -> bool:
+        return self.wallet.verify_invoice(invoice_id)
+
+    def receive(self, token: str, amount: int) -> bool:
+        return self.wallet.receive_token(token, amount)
+
+    def send(self, amount: int, destination: str) -> bool:
+        return self.wallet.send_token(amount, destination)
+
+
+def get_payment_provider(kind: str, client=None):
+    if kind == "lnbits":
+        return LNbitsPaymentProvider(client)
+    if kind == "fedimint":
+        return FedimintPaymentProvider(client)
+    raise ValueError(f"Unknown provider: {kind}")
 
 def get_current_agent(credentials: HTTPAuthorizationCredentials = Depends(security_scheme)) -> Dict[str, Any]:
     """Extract and validate agent from API key."""

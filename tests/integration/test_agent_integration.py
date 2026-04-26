@@ -11,17 +11,13 @@ from unittest.mock import Mock, patch, AsyncMock
 import tempfile
 import os
 
-# Import modules
-import sys
-sys.path.append('/home/charlie/bitagent/src')
-
-from security.authentication import AuthenticationManager
-from security.encryption import EncryptionManager
-from security.secure_communication import SecureCommunicationManager, MessageType, SecurityLevel
-from security.payment_security import PaymentSecurityManager
-from identity.enhanced_did import EnhancedDIDManager, TrustLevel
-from monitoring.audit_logger import AuditLogger, EventType
-from network.p2p_discovery import P2PDiscoveryManager, AgentInfo, DiscoveryQuery, DiscoveryProtocol
+from src.security.authentication import AuthenticationManager
+from src.security.encryption import EncryptionManager
+from src.security.secure_communication import SecureCommunicationManager, MessageType, SecurityLevel
+from src.security.payment_security import PaymentSecurityManager
+from src.identity.enhanced_did import EnhancedDIDManager, TrustLevel
+from src.monitoring.audit_logger import AuditLogger, EventType
+from src.network.p2p_discovery import P2PDiscoveryManager, AgentInfo, DiscoveryQuery, DiscoveryProtocol
 
 class TestAgentWorkflow:
     """Test complete agent workflows."""
