@@ -1,7 +1,26 @@
-pycache/
-*.pyc
-.env
+# Logs
 *.log
-config.py
+
+# Temporary CI/debug artifacts
+tmp/
+tmp_ci_logs/
+tmp_ci_logs/**/*.txt
+
+# Python cache
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local environment files
 .env
+.env.*
+!.env.example
+
+# OS/editor junk
+.DS_Store
+.vscode/
+.idea/
+
+# Project-specific local config
+config.py
 venv/
