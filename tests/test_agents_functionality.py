@@ -293,3 +293,59 @@ async def test_a2a_endpoint_invalid_legacy_payload_logs_warning_and_continues(ca
     assert "Invalid request envelope received; continuing in compatibility mode" in caplog.text
     assert app_main.REQUEST_ENVELOPE_METRICS["valid"] == 0
     assert app_main.REQUEST_ENVELOPE_METRICS["invalid"] == 1
+
+
+def test_request_envelope_metrics_endpoint_returns_expected_keys():
+    app_main.REQUEST_ENVELOPE_METRICS["valid"] = 0
+    app_main.REQUEST_ENVELOPE_METRICS["invalid"] = 0
+
+    metrics = app_main.get_request_envelope_metrics()
+
+    assert "valid" in metrics
+    assert "invalid" in metrics
+    assert metrics == {"valid": 0, "invalid": 0}
+
+
+def test_request_envelope_metrics_endpoint_returns_copy_and_does_not_mutate_source():
+    app_main.REQUEST_ENVELOPE_METRICS["valid"] = 2
+    app_main.REQUEST_ENVELOPE_METRICS["invalid"] = 3
+
+    metrics = app_main.get_request_envelope_metrics()
+    metrics["valid"] = 999
+
+    assert app_main.REQUEST_ENVELOPE_METRICS["valid"] == 2
+    assert app_main.REQUEST_ENVELOPE_METRICS["invalid"] == 3
+
+
+@pytest.mark.asyncio
+async def test_request_envelope_metrics_endpoint_reflects_previous_a2a_requests():
+    app_main.REQUEST_ENVELOPE_METRICS["valid"] = 0
+    app_main.REQUEST_ENVELOPE_METRICS["invalid"] = 0
+
+    valid_request = AsyncMock()
+    valid_request.json = AsyncMock(
+        return_value={
+            "id": "req-1",
+            "method": "identity.get_identity",
+            "params": {"pubkey": "abc"},
+            "sender": "did:example:alice",
+            "signature": None,
+            "timestamp": 1710000000,
+        }
+    )
+    invalid_request = AsyncMock()
+    invalid_request.json = AsyncMock(
+        return_value={
+            "id": 2,
+            "method": "identity.get_identity",
+            "params": {"pubkey": "abc"},
+        }
+    )
+
+    with patch("main.handle_a2a_request", AsyncMock(return_value={"ok": True})):
+        await app_main.a2a_endpoint(valid_request)
+        await app_main.a2a_endpoint(invalid_request)
+
+    metrics = app_main.get_request_envelope_metrics()
+    assert metrics["valid"] == 1
+    assert metrics["invalid"] == 1

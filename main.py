@@ -242,6 +242,11 @@ async def a2a_endpoint(request: Request):
     return {"jsonrpc": "2.0", "result": result, "id": request_id}
 
 
+@app.get("/internal/request-envelope-metrics")
+def get_request_envelope_metrics():
+    return dict(REQUEST_ENVELOPE_METRICS)
+
+
 @app.post("/payment/confirm")
 async def confirm_payment(request: Request):
     body = await request.json()
