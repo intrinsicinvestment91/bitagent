@@ -5,3 +5,6 @@ pycache/
 config.py
 .env
 venv/
+# CI temp logs
+tmp_ci_logs/
+tmp_ci_logs/**/*.txt
