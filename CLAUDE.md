@@ -182,3 +182,20 @@ To use in Claude Code: run `/mcp` to reload, or restart the session after clonin
 ## Relationship to SDEN
 
 SDEN (`/home/charlie/sensor-data-exchange-node`) is a companion protocol for IoT devices that sell signed sensor data via Lightning. A SDEN producer node IS a BitAgent agent — it uses BitAgent's wallet, Nostr discovery, and DID identity. When working on SDEN, understand they are one system. The SDEN `SensorAgent` class should extend BitAgent's `Agent` base class.
+
+## Current CI Status (Apr 30, 2026)
+
+- Latest push on `main`: `4f6971f` (`fix: unblock CI integration test imports and compatibility`).
+- Run `25145179466` failed in step `Run tests` during collection:
+  - `tests/security/test_security_features.py:18`
+  - `from security.authentication import AuthenticationManager, RateLimiter`
+  - `ModuleNotFoundError: No module named 'security'`
+- Completed in this session:
+  - Fixed integration test import path issue by using `src.*` imports in `tests/integration/test_agent_integration.py`.
+  - Added compatibility fixes touched by those tests:
+    - `src/security/authentication.py` keypair initialization now uses one generated pair.
+    - `src/identity/enhanced_did.py` keypair initialization fixed and string `CredentialType` accepted.
+    - `src/security/secure_communication.py` `SecureMessage` import aliasing fixed.
+    - `src/monitoring/audit_logger.py` string severity/security-event handling improved; recursion guard for `alert_created`.
+  - Updated integration test expectations to match current enum/report behavior.
+- Next likely fix for green CI: apply the same `src.*` import-path update pattern to `tests/security/test_security_features.py` (and any other remaining tests importing bare `security.*`).
