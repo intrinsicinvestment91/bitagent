@@ -93,8 +93,7 @@ class EnhancedDIDManager:
     
     def __init__(self, method: DIDMethod = DIDMethod.KEY):
         self.method = method
-        self.private_key = self._generate_keypair()[0]
-        self.public_key = self._generate_keypair()[1]
+        self.private_key, self.public_key = self._generate_keypair()
         self.did_documents = {}
         self.verifiable_credentials = {}
         self.trust_scores = {}
@@ -145,6 +144,9 @@ class EnhancedDIDManager:
     def issue_verifiable_credential(self, subject_did: str, credential_type: CredentialType, 
                                   credential_data: Dict[str, Any], expiration_days: int = 365) -> VerifiableCredential:
         """Issue a verifiable credential."""
+        if isinstance(credential_type, str):
+            credential_type = CredentialType(credential_type)
+
         credential_id = secrets.token_hex(16)
         issuance_date = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         expiration_date = time.strftime("%Y-%m-%dT%H:%M:%SZ", 

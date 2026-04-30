@@ -19,7 +19,7 @@ from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
 from cryptography.hazmat.backends import default_backend
 import base64
 
-from .encryption import EncryptionManager, KeyExchange, SecureMessage
+from .encryption import EncryptionManager, KeyExchange, SecureMessage as EncryptedSecureMessage
 from .authentication import AuthenticationManager
 
 class MessageType(Enum):
@@ -70,7 +70,7 @@ class SecureCommunicationManager:
         self.auth_manager = auth_manager or AuthenticationManager()
         self.encryption_manager = EncryptionManager()
         self.key_exchange = KeyExchange()
-        self.secure_message = SecureMessage(self.encryption_manager)
+        self.secure_message = EncryptedSecureMessage(self.encryption_manager)
         
         self.active_channels = {}
         self.message_handlers = {}

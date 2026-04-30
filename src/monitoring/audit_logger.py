@@ -126,6 +126,9 @@ class AuditLogger:
                   session_id: str = None, result: str = "success",
                   duration_ms: float = None):
         """Log an audit event."""
+        if isinstance(severity, str):
+            severity = LogLevel[severity.upper()]
+
         event_id = self._generate_event_id()
         
         event = AuditEvent(
@@ -221,6 +224,9 @@ class AuditLogger:
     def log_security_event(self, agent_id: str, security_event: SecurityEvent,
                           details: Dict[str, Any], severity: LogLevel = LogLevel.WARNING):
         """Log security events."""
+        if isinstance(security_event, str):
+            security_event = SecurityEvent(security_event.lower())
+
         self.log_event(
             event_type=EventType.SECURITY,
             agent_id=agent_id,
@@ -425,7 +431,7 @@ class AuditLogger:
             self._check_payment_patterns(event)
         
         # Check for high-severity events
-        if event.severity in [LogLevel.ERROR, LogLevel.CRITICAL]:
+        if event.severity in [LogLevel.ERROR, LogLevel.CRITICAL] and event.action != "alert_created":
             self.create_alert(
                 "high_severity_event",
                 f"High severity event: {event.action}",

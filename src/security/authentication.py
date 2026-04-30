@@ -21,8 +21,7 @@ class AuthenticationManager:
     
     def __init__(self, secret_key: Optional[str] = None):
         self.secret_key = secret_key or secrets.token_urlsafe(32)
-        self.private_key = self._generate_keypair()[0]
-        self.public_key = self._generate_keypair()[1]
+        self.private_key, self.public_key = self._generate_keypair()
         self.active_tokens = {}
         
     def _generate_keypair(self):
