@@ -1,0 +1,13 @@
+image.tar
+*.s9pk
+.git
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+data/
+tmp_ci_logs/
+*.log
+.env
+.env.*
+audit.log

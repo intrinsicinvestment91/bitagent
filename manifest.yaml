@@ -1,0 +1,117 @@
+id: bitagent
+title: "BitAgent"
+version: "0.1.0"
+min-os-version: "0.3.5"
+license: MIT
+release-notes: "Initial BitAgent release — Lightning-enabled AI agents with Nostr discovery"
+wrapper-repo: "https://github.com/intrinsicinvestment91/bitagent"
+upstream-repo: "https://github.com/intrinsicinvestment91/bitagent"
+
+description:
+  short: "Lightning-enabled AI agent framework"
+  long: "BitAgent runs autonomous AI agents that accept Bitcoin Lightning payments via LNbits. Includes translation, web search, price oracle, and web fetch agents discoverable via Nostr. Optionally wraps Lighthouse intelligence queries as a paid endpoint."
+
+assets:
+  icon: "icon.png"
+  license: "LICENSE"
+  instructions: "instructions.md"
+  docker-images: "image.tar"
+
+main:
+  type: docker
+  image: main
+  entrypoint: "docker_entrypoint.sh"
+  args: []
+  mounts:
+    main: /data
+  environment:
+    LNBITS_URL: "{{ config.lnbits_url }}"
+    LNBITS_API_KEY: "{{ config.lnbits_api_key }}"
+    NOSTR_PRIVATE_KEY: "{{ config.nostr_private_key }}"
+    ALLOWED_ORIGINS: "*"
+    HOST: "0.0.0.0"
+    PORT: "8000"
+    DATABASE_URL: "sqlite:////data/bitagent.db"
+    LOG_LEVEL: "INFO"
+
+hardware-requirements:
+  arch:
+    - x86_64
+
+interfaces:
+  main:
+    name: "BitAgent API"
+    description: "BitAgent HTTP API — Lightning-gated AI agent endpoints"
+    ui: true
+    protocols:
+      - tcp
+      - http
+    tor-config:
+      port-mapping:
+        8000: "8000"
+    lan-config:
+      8000:
+        ssl: false
+        internal: 8000
+
+volumes:
+  main:
+    type: data
+    description: "BitAgent persistent data (SQLite DB, logs)"
+
+config:
+  get:
+    type: script
+  set:
+    type: script
+
+properties:
+  type: script
+
+health-checks:
+  web:
+    name: "BitAgent API"
+    success-message: "BitAgent is accepting requests"
+    type: script
+
+backup:
+  create:
+    type: docker
+    image: compat
+    system: true
+    entrypoint: compat
+    args:
+      - duplicity
+      - bitagent
+      - /mnt/backup
+      - /data
+    mounts:
+      BACKUP: /mnt/backup
+      main: /data
+  restore:
+    type: docker
+    image: compat
+    system: true
+    entrypoint: compat
+    args:
+      - duplicity-restore
+      - bitagent
+      - /mnt/backup
+      - /data
+    mounts:
+      BACKUP: /mnt/backup
+      main: /data
+
+migrations:
+  from:
+    "*":
+      type: script
+      args: ["from"]
+  to:
+    "*":
+      type: script
+      args: ["to"]
+
+alerts: {}
+actions: {}
+dependencies: {}

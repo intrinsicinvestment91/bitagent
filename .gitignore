@@ -5,3 +5,7 @@ pycache/
 config.py
 .env
 venv/
+
+# Build/package artifacts
+bitagent.s9pk
+image.tar

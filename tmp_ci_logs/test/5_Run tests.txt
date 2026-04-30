@@ -1,0 +1,48 @@
+﻿2026-04-26T21:50:32.7671983Z ##[group]Run pytest tests/ -v --tb=short -x
+2026-04-26T21:50:32.7672324Z [36;1mpytest tests/ -v --tb=short -x[0m
+2026-04-26T21:50:32.7687045Z shell: /usr/bin/bash -e {0}
+2026-04-26T21:50:32.7687282Z env:
+2026-04-26T21:50:32.7687535Z   pythonLocation: /opt/hostedtoolcache/Python/3.11.15/x64
+2026-04-26T21:50:32.7687961Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.11.15/x64/lib/pkgconfig
+2026-04-26T21:50:32.7688358Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.11.15/x64
+2026-04-26T21:50:32.7688963Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.11.15/x64
+2026-04-26T21:50:32.7689316Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.11.15/x64
+2026-04-26T21:50:32.7689681Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.11.15/x64/lib
+2026-04-26T21:50:32.7690114Z   LNBITS_URL: https://demo.lnbits.com
+2026-04-26T21:50:32.7690368Z   LNBITS_API_KEY: demo
+2026-04-26T21:50:32.7690567Z ##[endgroup]
+2026-04-26T21:50:33.2249993Z ============================= test session starts ==============================
+2026-04-26T21:50:33.2251123Z platform linux -- Python 3.11.15, pytest-9.0.3, pluggy-1.6.0 -- /opt/hostedtoolcache/Python/3.11.15/x64/bin/python
+2026-04-26T21:50:33.2251913Z cachedir: .pytest_cache
+2026-04-26T21:50:33.2252313Z rootdir: /home/runner/work/bitagent/bitagent
+2026-04-26T21:50:33.2252840Z plugins: asyncio-1.3.0, mock-3.15.1, anyio-4.13.0
+2026-04-26T21:50:33.2253829Z asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+2026-04-26T21:50:33.7925649Z collecting ... collected 20 items / 1 error
+2026-04-26T21:50:33.7925999Z 
+2026-04-26T21:50:33.7926166Z ==================================== ERRORS ====================================
+2026-04-26T21:50:33.7926768Z _________ ERROR collecting tests/integration/test_agent_integration.py _________
+2026-04-26T21:50:33.7927422Z tests/integration/test_agent_integration.py:20: in <module>
+2026-04-26T21:50:33.7928252Z     from src.network.p2p_discovery import P2PDiscoveryManager, AgentInfo, DiscoveryQuery, DiscoveryProtocol
+2026-04-26T21:50:33.7929354Z src/network/p2p_discovery.py:20: in <module>
+2026-04-26T21:50:33.7929868Z     from nostr.relay_manager import RelayManager
+2026-04-26T21:50:33.7930718Z /opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/site-packages/nostr/relay_manager.py:11: in <module>
+2026-04-26T21:50:33.7931376Z     from .relay import Relay, RelayPolicy, RelayProxyConnectionConfig
+2026-04-26T21:50:33.7931871Z /opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/site-packages/nostr/relay.py:33: in <module>
+2026-04-26T21:50:33.7932297Z     @dataclass
+2026-04-26T21:50:33.7932463Z      ^^^^^^^^^
+2026-04-26T21:50:33.7932779Z /opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/dataclasses.py:1232: in dataclass
+2026-04-26T21:50:33.7933151Z     return wrap(cls)
+2026-04-26T21:50:33.7933339Z            ^^^^^^^^^
+2026-04-26T21:50:33.7933641Z /opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/dataclasses.py:1222: in wrap
+2026-04-26T21:50:33.7934078Z     return _process_class(cls, init, repr, eq, order, unsafe_hash,
+2026-04-26T21:50:33.7934528Z /opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/dataclasses.py:958: in _process_class
+2026-04-26T21:50:33.7934975Z     cls_fields.append(_get_field(cls, name, type, kw_only))
+2026-04-26T21:50:33.7935282Z                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2026-04-26T21:50:33.7935783Z /opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/dataclasses.py:815: in _get_field
+2026-04-26T21:50:33.7936240Z     raise ValueError(f'mutable default {type(f.default)} for field '
+2026-04-26T21:50:33.7936790Z E   ValueError: mutable default <class 'nostr.relay.RelayPolicy'> for field policy is not allowed: use default_factory
+2026-04-26T21:50:33.7937317Z =========================== short test summary info ============================
+2026-04-26T21:50:33.7938000Z ERROR tests/integration/test_agent_integration.py - ValueError: mutable default <class 'nostr.relay.RelayPolicy'> for field policy is not allowed: use default_factory
+2026-04-26T21:50:33.7939159Z !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
+2026-04-26T21:50:33.7939511Z =============================== 1 error in 0.51s ===============================
+2026-04-26T21:50:33.8555135Z ##[error]Process completed with exit code 1.

@@ -23,6 +23,11 @@ class _SimWallet:
             return True
         return False
 
+    def accept_token(self, token: dict, required_amount: int) -> bool:
+        if token.get("amount_sat", 0) < required_amount:
+            return False
+        return self.redeem_token(token)
+
 
 class BaseAgent:
     def __init__(self, name: str, role: str):
