@@ -341,9 +341,21 @@ class PaymentSecurityManager:
         # Could include freezing funds, notifying parties, etc.
     
     def _evaluate_fraud_rule(self, rule: FraudDetectionRule, payment_data: Dict[str, Any]) -> bool:
-        """Evaluate a fraud detection rule."""
-        # Implement rule evaluation logic
-        # For now, return False as a placeholder
+        """Evaluate a fraud detection rule against payment data."""
+        conditions = rule.conditions
+
+        if rule.rule_id == "high_amount":
+            threshold = conditions.get("amount_threshold", 0)
+            return payment_data.get("amount", 0) >= threshold
+
+        if rule.rule_id == "rapid_transactions":
+            # Requires external state tracking; skip for now
+            return False
+
+        if rule.rule_id == "new_agent":
+            # Requires agent registry; skip for now
+            return False
+
         return False
     
     def _initialize_fraud_rules(self):

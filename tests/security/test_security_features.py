@@ -11,16 +11,12 @@ from unittest.mock import Mock, patch
 import tempfile
 import os
 
-# Import security modules
-import sys
-sys.path.append('/home/charlie/bitagent/src')
-
-from security.authentication import AuthenticationManager, RateLimiter
-from security.encryption import EncryptionManager, KeyExchange, SecureMessage, InputValidator
-from security.secure_communication import SecureCommunicationManager, MessageType, SecurityLevel
-from security.payment_security import PaymentSecurityManager, EscrowStatus, DisputeStatus
-from identity.enhanced_did import EnhancedDIDManager, DIDMethod, CredentialType, TrustLevel
-from monitoring.audit_logger import AuditLogger, EventType, SecurityEvent, LogLevel
+from src.security.authentication import AuthenticationManager, RateLimiter
+from src.security.encryption import EncryptionManager, KeyExchange, SecureMessage, InputValidator
+from src.security.secure_communication import SecureCommunicationManager, MessageType, SecurityLevel
+from src.security.payment_security import PaymentSecurityManager, EscrowStatus, DisputeStatus
+from src.identity.enhanced_did import EnhancedDIDManager, DIDMethod, CredentialType, TrustLevel
+from src.monitoring.audit_logger import AuditLogger, EventType, SecurityEvent, LogLevel
 
 class TestAuthentication:
     """Test authentication and authorization features."""
