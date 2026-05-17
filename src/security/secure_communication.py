@@ -77,8 +77,12 @@ class SecureCommunicationManager:
         self.heartbeat_interval = 30.0
         self.channel_timeout = 300.0  # 5 minutes
         
-        # Start cleanup task
-        asyncio.create_task(self._cleanup_expired_channels())
+        # Start cleanup task only when an event loop is already running
+        try:
+            asyncio.get_running_loop()
+            asyncio.create_task(self._cleanup_expired_channels())
+        except RuntimeError:
+            pass
     
     async def establish_secure_channel(self, peer_agent_id: str, peer_public_key: bytes, 
                                      security_level: SecurityLevel = SecurityLevel.SECURE) -> str:

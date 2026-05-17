@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Project Is
 
-BitAgent is a modular, Lightning-enabled AI agent framework. Agents autonomously offer services (translation, web search, crypto prices, web fetching, streaming search), accept Bitcoin Lightning (LNbits) payments, discover each other via the Nostr protocol, and verify identity using Decentralized Identifiers (DIDs). Agents can chain together into multi-step workflows through a CoordinatorAgent.
+BitAgent is a modular, Lightning-enabled AI agent framework. Agents autonomously offer services (translation, web search, crypto prices, web fetching, streaming search, NIP-05 identity), accept Bitcoin Lightning (LNbits) payments, discover each other via the Nostr protocol, and verify identity using Decentralized Identifiers (DIDs). Agents can chain together into multi-step workflows through a CoordinatorAgent.
 
 **Live deployment:** `https://bitagent-production.up.railway.app` — connected to a live LNbits wallet (~68k sats). End-to-end Lightning payments have been verified in production (10-sat search, 100-sat translation).
 
@@ -15,12 +15,13 @@ BitAgent is a modular, Lightning-enabled AI agent framework. Agents autonomously
 - Config: `railway.toml` — points to Dockerfile, healthcheck at `/health`
 - Deploy: connect Railway to this repo; set env vars in Railway dashboard
 - Required env vars: `LNBITS_URL`, `LNBITS_API_KEY`
-- Optional: `ALLOWED_ORIGINS` (comma-separated), `PORT`, `LOG_LEVEL`
+- Optional: `ALLOWED_ORIGINS` (comma-separated), `PORT`, `LOG_LEVEL`, `NOSTR_PRIVATE_KEY`, `PUBLIC_URL`
+- Identity gate (opt-in): `IDENTITY_REQUIRE_FOR_PAID_SERVICES=true`, `IDENTITY_MIN_TRUST_SCORE=0.25`, `IDENTITY_FREE_QUERIES=false`
 
 **Preserved (Start9 — self-hosted):**
 - Entry point: `start9_server.py` — do not refactor, kept for future use
 - Manifest: `docker-compose.yaml` — this is the Start9 manifest, NOT a standard compose file
-- Scripts: `deploy_to_start9.sh`, `deploy_live.sh`
+- Build: `make` (requires `start-sdk`, `deno`, Docker) — produces `bitagent.s9pk`
 
 **Local dev:**
 ```bash
@@ -56,23 +57,16 @@ pytest tests/test_agent_wallet.py::TestAgentWallet::test_create_invoice -v
 
 No conftest.py / pytest fixtures — tests use `setup_method()` and inline `unittest.mock`.
 
-## Development Priorities
+**Test import pattern** — all tests must use `src.*` imports (e.g. `from src.security.authentication import ...`). `tests/security/test_security_features.py` currently uses `sys.path.append('/home/charlie/bitagent/src')` + bare `security.*` imports — this is the remaining CI blocker and should be converted to `src.*` imports.
 
-Remaining gaps (already-fixed items removed):
+## Development Priorities
 
 1. **Unify agent pattern** — all agents use inline payment logic (check `payment_hash` → create invoice → verify via `AgentWallet`). The `@require_payment` decorator in `src/core/payment.py` uses an incompatible escrow/`PaymentSecurityManager` system and is **not wired to the real LNbits wallet** — do not use it until it's rewritten to call `AgentWallet` directly.
 2. **CORS config** — `ALLOWED_ORIGINS` is set in Railway env vars; verify it includes any new frontends.
 3. **Whisper/transcription** — `openai-whisper` and `ffmpeg-python` are excluded from `requirements.txt` (pulls PyTorch ~2GB, breaks cloud builds). Install locally to use transcription: `pip install openai-whisper ffmpeg-python`.
 4. **Phase 3** — WebSocket + MQTT support (needed for SDEN real-time streaming data).
-5. **Phase 4** — Fedimint ecash support is live (see payment layer above). Taproot Assets/USDT on Lightning still future work.
+5. **Taproot Assets/USDT on Lightning** — still future work (Fedimint ecash is already live).
 6. **Phase 5** — Agent registry + reputation system.
-
-**Fixed in prior session (do not re-fix):**
-- `secrets`/`hashlib` removed from requirements.txt (they're stdlib)
-- `agent_wallet.py` — validation deferred to `__init__()`, not module level
-- `agent_logic.py` — broken relative import and wrong function signature fixed
-- `polyglot_agent/__init__.py` — broken `@require_payment` / `@require_authentication` decorator chain replaced with inline payment logic
-- DDG scraper replaced with `ddgs` package (DDG blocks server-side scraping)
 
 ## Architecture
 
@@ -95,6 +89,7 @@ If no `payment_hash` is included, the endpoint returns a 402 with a Lightning in
 | `web_fetch_agent/` | 25 sats | SSRF protection blocks private IP ranges |
 | `search_agent/` | 10 sats | Brave → SearXNG → DuckDuckGo (`ddgs`) fallback |
 | `streamfinder/` | 100 sats | A2A JSON-RPC reference implementation; **dummy DB only** — no real streaming API yet |
+| `identity_agent/` | 10–1000 sats | NIP-05 registration + trust scoring; SQLite store; **A2A only** — no dedicated router prefix |
 
 **Not wired into `main.py`** — the following files exist in `src/agents/` but are not live endpoints:
 - `camera_feed_bot.py`, `databot.py`, `service_agent.py` — concrete `BaseAgent` subclasses used in `examples/` and `tests/agents/` only
@@ -134,7 +129,7 @@ To use in Claude Code: run `/mcp` to reload, or restart the session after clonin
 
 ### Root-level modules
 
-`agent_logic.py` — top-level A2A router; dispatches `oracle.*`, `fetch.*`, `search.*`, and `streamfinder.*` methods to their agent classes. Called by `main.py`'s `/a2a` endpoint.
+`agent_logic.py` — top-level A2A router; dispatches `oracle.*`, `fetch.*`, `search.*`, `identity.*`, and `streamfinder.*` methods to their agent classes. Called by `main.py`'s `/a2a` endpoint.
 
 `agent_wallet.py` — `AgentWallet` singleton used by all agents; validation deferred to `__init__()`.
 
@@ -157,6 +152,7 @@ To use in Claude Code: run `/mcp` to reload, or restart the session after clonin
 - `secure_endpoints.py` — input sanitization, file upload validation, Pydantic models
 
 ### Identity and Discovery
+- `src/agents/identity_agent/` — NIP-05 registration and trust scoring. SQLite-backed (`store.py`). Accessed only via A2A (`identity.*` methods). Trust gate: when `IDENTITY_REQUIRE_FOR_PAID_SERVICES=true`, `streamfinder.search` requires `requester_pubkey` with a trust score above `IDENTITY_MIN_TRUST_SCORE` (default 0.25).
 - `src/identity/enhanced_did.py` — DID document creation supporting `did:key`, `did:web`, `did:bitcoin`, `did:nostr`
 - `src/network/nostr.py` — publishes agent announcements as Nostr Kind 30078 events
 - `src/network/p2p_discovery.py` — DHT-based peer discovery across Nostr, DNS, and multicast
@@ -177,25 +173,13 @@ To use in Claude Code: run `/mcp` to reload, or restart the session after clonin
 
 `streamfinder` implements the Agent-to-Agent JSON-RPC pattern. Requests hit `POST /a2a` with `{"method": "streamfinder.search", "params": {...}}`. This is the reference implementation for adding new A2A-compatible agents.
 
-`agent_logic.py` routes A2A calls for oracle (`oracle.price`, `oracle.prices`, `oracle.convert`), fetch (`fetch.url`), and search (`search.query`) in addition to streamfinder.
+`agent_logic.py` routes A2A calls for:
+- `oracle.*` — `oracle.price`, `oracle.prices`, `oracle.convert`
+- `fetch.*` — `fetch.url`
+- `search.*` — `search.query`
+- `identity.*` — `identity.register_nip05`, `identity.get_identity`, `identity.list_verified`, `identity.search`, `identity.get_trust_signal`
+- `streamfinder.*` — `streamfinder.search` (with optional identity trust gate)
 
 ## Relationship to SDEN
 
 SDEN (`/home/charlie/sensor-data-exchange-node`) is a companion protocol for IoT devices that sell signed sensor data via Lightning. A SDEN producer node IS a BitAgent agent — it uses BitAgent's wallet, Nostr discovery, and DID identity. When working on SDEN, understand they are one system. The SDEN `SensorAgent` class should extend BitAgent's `Agent` base class.
-
-## Current CI Status (Apr 30, 2026)
-
-- Latest push on `main`: `4f6971f` (`fix: unblock CI integration test imports and compatibility`).
-- Run `25145179466` failed in step `Run tests` during collection:
-  - `tests/security/test_security_features.py:18`
-  - `from security.authentication import AuthenticationManager, RateLimiter`
-  - `ModuleNotFoundError: No module named 'security'`
-- Completed in this session:
-  - Fixed integration test import path issue by using `src.*` imports in `tests/integration/test_agent_integration.py`.
-  - Added compatibility fixes touched by those tests:
-    - `src/security/authentication.py` keypair initialization now uses one generated pair.
-    - `src/identity/enhanced_did.py` keypair initialization fixed and string `CredentialType` accepted.
-    - `src/security/secure_communication.py` `SecureMessage` import aliasing fixed.
-    - `src/monitoring/audit_logger.py` string severity/security-event handling improved; recursion guard for `alert_created`.
-  - Updated integration test expectations to match current enum/report behavior.
-- Next likely fix for green CI: apply the same `src.*` import-path update pattern to `tests/security/test_security_features.py` (and any other remaining tests importing bare `security.*`).
