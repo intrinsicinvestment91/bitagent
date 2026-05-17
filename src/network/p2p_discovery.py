@@ -173,7 +173,31 @@ class EnhancedNostrDiscovery:
     def __init__(self, private_key: str = None):
         if not NOSTR_AVAILABLE:
             raise RuntimeError(f"Nostr dependencies unavailable: {NOSTR_IMPORT_ERROR}")
-        self.private_key = PrivateKey(bytes.fromhex(private_key)) if private_key else PrivateKey()
+
+        if private_key:
+            try:
+                self.private_key = PrivateKey(bytes.fromhex(private_key.strip()))
+                logger.info(
+                    "Nostr: persistent identity loaded (pubkey %s...)",
+                    self.private_key.public_key.hex()[:16],
+                )
+            except Exception as e:
+                logger.warning(
+                    "Nostr: NOSTR_PRIVATE_KEY is invalid (%s) — falling back to ephemeral identity",
+                    e,
+                )
+                self.private_key = PrivateKey()
+                logger.info(
+                    "Nostr: ephemeral identity active (pubkey %s...)",
+                    self.private_key.public_key.hex()[:16],
+                )
+        else:
+            self.private_key = PrivateKey()
+            logger.info(
+                "Nostr: NOSTR_PRIVATE_KEY not set — ephemeral identity active (pubkey %s...)",
+                self.private_key.public_key.hex()[:16],
+            )
+
         self.public_key = self.private_key.public_key
         self.relay_manager = RelayManager()
         self.agent_cache = {}
