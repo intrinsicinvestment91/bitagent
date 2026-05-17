@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Architecture — BitAgent</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0d1117; --surface: #161b22; --border: #30363d;
+      --orange: #f7931a; --text: #e6edf3; --muted: #8b949e;
+      --green: #3fb950; --blue: #58a6ff; --purple: #a371f7;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    }
+    body { background: var(--bg); color: var(--text); font-family: var(--font); line-height: 1.6; }
+    nav {
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      padding: 0 2rem; display: flex; align-items: center; gap: 2rem;
+      height: 56px; position: sticky; top: 0; z-index: 100;
+    }
+    nav .logo { font-weight: 700; font-size: 1.1rem; color: var(--orange); text-decoration: none; }
+    nav a { color: var(--muted); text-decoration: none; font-size: 0.9rem; transition: color 0.15s; }
+    nav a:hover, nav a.active { color: var(--text); }
+    nav .spacer { flex: 1; }
+    nav .badge { background: var(--orange); color: #000; font-size: 0.7rem; font-weight: 700; padding: 2px 8px; border-radius: 99px; text-decoration: none; }
+
+    .page-header { max-width: 900px; margin: 3rem auto 0; padding: 0 2rem 2rem; border-bottom: 1px solid var(--border); }
+    .page-header h1 { font-size: 2rem; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 0.4rem; }
+    .page-header p { color: var(--muted); }
+
+    .content { max-width: 900px; margin: 0 auto; padding: 3rem 2rem; }
+    .content h2 { font-size: 1.35rem; font-weight: 700; letter-spacing: -0.3px; margin: 2.5rem 0 0.4rem; }
+    .content h2:first-child { margin-top: 0; }
+    .content p { color: var(--muted); font-size: 0.92rem; margin-bottom: 1rem; }
+    .content p strong { color: var(--text); }
+
+    /* ASCII diagram box */
+    .diagram {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.5rem 2rem;
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      line-height: 1.7;
+      overflow-x: auto;
+      margin: 1.25rem 0;
+      white-space: pre;
+      color: var(--text);
+    }
+    .diagram .hl { color: var(--orange); }
+    .diagram .dim { color: var(--muted); }
+    .diagram .grn { color: var(--green); }
+    .diagram .blu { color: var(--blue); }
+    .diagram .pur { color: var(--purple); }
+
+    pre {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: 1rem 1.25rem; overflow-x: auto;
+      font-family: var(--mono); font-size: 0.78rem; line-height: 1.65;
+      margin: 1rem 0;
+    }
+
+    .layer-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1rem; margin: 1.25rem 0; }
+    .layer-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.25rem; }
+    .layer-card .layer-name { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.8px; color: var(--orange); margin-bottom: 0.5rem; }
+    .layer-card h3 { font-size: 0.95rem; font-weight: 600; margin-bottom: 0.4rem; }
+    .layer-card p { font-size: 0.82rem; color: var(--muted); }
+    .layer-card ul { list-style: none; margin-top: 0.4rem; }
+    .layer-card li { font-size: 0.82rem; color: var(--muted); padding: 1px 0; }
+    .layer-card li::before { content: "→ "; color: var(--orange); }
+
+    code { font-family: var(--mono); font-size: 0.84em; color: var(--orange); background: rgba(247,147,26,0.1); padding: 1px 5px; border-radius: 3px; }
+
+    table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.85rem; }
+    th { text-align: left; padding: 0.6rem 1rem; border-bottom: 2px solid var(--border); color: var(--muted); font-weight: 600; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.6px; }
+    td { padding: 0.6rem 1rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+    tr:last-child td { border-bottom: none; }
+    td:first-child { font-family: var(--mono); font-size: 0.8rem; color: var(--blue); }
+
+    footer { border-top: 1px solid var(--border); padding: 2rem; text-align: center; color: var(--muted); font-size: 0.8rem; }
+    footer a { color: var(--muted); text-decoration: none; }
+    footer a:hover { color: var(--text); }
+  </style>
+</head>
+<body>
+
+<nav>
+  <a class="logo" href="index.html">⚡ BitAgent</a>
+  <a href="index.html">Overview</a>
+  <a href="agents.html">Agents</a>
+  <a href="architecture.html" class="active">Architecture</a>
+  <a href="payments.html">Payments</a>
+  <a href="discovery.html">Discovery</a>
+  <a href="api.html">API</a>
+  <span class="spacer"></span>
+  <a class="badge" href="https://bitagent-production.up.railway.app/docs" target="_blank">Live Docs ↗</a>
+</nav>
+
+<div class="page-header">
+  <h1>Architecture</h1>
+  <p>How BitAgent is structured — layers, entry points, and module responsibilities.</p>
+</div>
+
+<div class="content">
+
+  <h2>System overview</h2>
+  <p>BitAgent is a FastAPI application deployed on Railway. All agents share a single process, a single LNbits wallet client, and a single Nostr identity. Agents are FastAPI routers mounted under path prefixes.</p>
+
+  <div class="diagram">┌─────────────────────────────────────────────────────────────┐
+│                    <span class="hl">BitAgent Process</span>                         │
+│                                                             │
+│  ┌──────────┐  ┌───────────┐  ┌────────┐  ┌──────────┐   │
+│  │<span class="grn">Polyglot  </span>│  │<span class="grn">Coordinator</span>│  │<span class="grn">Oracle  </span>│  │<span class="grn">WebFetch  </span>│   │
+│  │<span class="grn">/polyglot </span>│  │<span class="grn">/coordinator│  │<span class="grn">/oracle </span>│  │<span class="grn">/fetch    </span>│   │
+│  └──────────┘  └───────────┘  └────────┘  └──────────┘   │
+│                                                             │
+│  ┌──────────┐  ┌───────────┐  ┌─────────────────────────┐ │
+│  │<span class="grn">Search    </span>│  │<span class="grn">Registry  </span>│  │  <span class="blu">POST /a2a</span>               │ │
+│  │<span class="grn">/search   </span>│  │<span class="grn">/agents   </span>│  │  streamfinder.*        │ │
+│  └──────────┘  └───────────┘  │  identity.*             │ │
+│                                │  oracle.* / fetch.*      │ │
+│                                │  search.*               │ │
+│                                └─────────────────────────┘ │
+│                                                             │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │              <span class="hl">Shared Infrastructure</span>                   │   │
+│  │  <span class="pur">AgentWallet</span> (LNbits)  <span class="pur">FedimintWallet</span>              │   │
+│  │  <span class="pur">P2PDiscoveryManager</span>  (DHT + Nostr)                 │   │
+│  │  <span class="pur">EnhancedNostrDiscovery</span> (identity + relay publish)  │   │
+│  └─────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────┘
+          │                              │
+   <span class="hl">LNbits</span> (Lightning payments)    <span class="blu">Nostr relays</span> (discovery)
+   <span class="hl">Fedimint</span> (ecash, optional)      <span class="blu">DHT peers</span> (agent registry)</div>
+
+  <h2>Layer breakdown</h2>
+  <div class="layer-grid">
+    <div class="layer-card">
+      <div class="layer-name">Entry Points</div>
+      <h3>main.py</h3>
+      <p>Railway / cloud deployment. Mounts all routers, handles CORS, runs Nostr broadcast on startup.</p>
+      <ul>
+        <li>mcp_server.py — MCP stdio for Claude</li>
+        <li>start9_server.py — preserved, do not modify</li>
+      </ul>
+    </div>
+    <div class="layer-card">
+      <div class="layer-name">Agents — src/agents/</div>
+      <h3>FastAPI routers</h3>
+      <p>Each agent is a self-contained package with its own payment logic. No shared decorator; each checks <code>payment_hash</code> inline.</p>
+      <ul>
+        <li>polyglot_agent/</li>
+        <li>coordinator_agent/</li>
+        <li>price_oracle_agent/</li>
+        <li>web_fetch_agent/</li>
+        <li>search_agent/</li>
+        <li>streamfinder/ (A2A only)</li>
+        <li>identity_agent/ (A2A only)</li>
+      </ul>
+    </div>
+    <div class="layer-card">
+      <div class="layer-name">Network — src/network/</div>
+      <h3>Discovery + Registry</h3>
+      <p>P2P discovery over DHT and Nostr. Agent registry endpoint exposes known agents over HTTP.</p>
+      <ul>
+        <li>p2p_discovery.py — DHTNode, EnhancedNostrDiscovery, P2PDiscoveryManager</li>
+        <li>registry_router.py — GET /agents/registry</li>
+        <li>nostr.py — Kind 30078 announcements</li>
+      </ul>
+    </div>
+    <div class="layer-card">
+      <div class="layer-name">Wallets</div>
+      <h3>Payment backends</h3>
+      <p>Two tiers: Lightning via LNbits, ecash via Fedimint. AgentWallet is lazy (raises on missing config). FedimintWallet is eager but harmless when unconfigured.</p>
+      <ul>
+        <li>agent_wallet.py — LNbits REST wrapper</li>
+        <li>src/wallets/fedimint_wallet.py — ecash client</li>
+        <li>lnbits_client.py — raw HTTP</li>
+      </ul>
+    </div>
+    <div class="layer-card">
+      <div class="layer-name">Security — src/security/</div>
+      <h3>Auth + Encryption</h3>
+      <p>JWT auth, API key hierarchy, AES-256-GCM / ChaCha20-Poly1305 encryption, input sanitisation, Pydantic models at boundaries.</p>
+      <ul>
+        <li>authentication.py</li>
+        <li>encryption.py</li>
+        <li>secure_endpoints.py</li>
+        <li>payment_security.py</li>
+        <li>secure_communication.py</li>
+      </ul>
+    </div>
+    <div class="layer-card">
+      <div class="layer-name">Identity — src/identity/</div>
+      <h3>DID + NIP-05</h3>
+      <p>DID document creation for four methods. NIP-05 registration and trust scoring backed by SQLite.</p>
+      <ul>
+        <li>enhanced_did.py — did:key/web/bitcoin/nostr</li>
+        <li>did.py — basic DID operations</li>
+        <li>identity_agent/store.py — SQLite</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>Entry points</h2>
+  <table>
+    <thead><tr><th>File</th><th>Purpose</th><th>When to use</th></tr></thead>
+    <tbody>
+      <tr><td>main.py</td><td>FastAPI app — Railway / cloud</td><td>Production deployment</td></tr>
+      <tr><td>mcp_server.py</td><td>MCP stdio server</td><td>Claude Code tool integration</td></tr>
+      <tr><td>start9_server.py</td><td>Start9 / StartOS deployment</td><td>Self-hosted node</td></tr>
+      <tr><td>agent_logic.py</td><td>A2A dispatcher (called by /a2a)</td><td>Internal — not run directly</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Wallet lazy-loading pattern</h2>
+  <p>All live agents follow this pattern so that <strong>missing credentials don't crash startup</strong> — payments are simply disabled in dev mode.</p>
+  <pre>from src.wallets.fedimint_wallet import FedimintWallet
+
+_fedimint = FedimintWallet()   # eager — safe, no required args
+_wallet = None                  # lazy — raises if LNBITS_* not set
+
+def _get_wallet():
+    global _wallet
+    if _wallet is None:
+        try:
+            from agent_wallet import AgentWallet
+            _wallet = AgentWallet()
+        except Exception:
+            pass
+    return _wallet</pre>
+
+  <h2>A2A routing — agent_logic.py</h2>
+  <p>The <code>POST /a2a</code> endpoint dispatches JSON-RPC method calls by prefix. Adding a new A2A-capable agent means registering its handler here.</p>
+  <table>
+    <thead><tr><th>Method prefix</th><th>Routed to</th></tr></thead>
+    <tbody>
+      <tr><td>oracle.*</td><td>PriceOracleAgent</td></tr>
+      <tr><td>fetch.*</td><td>WebFetchAgent</td></tr>
+      <tr><td>search.*</td><td>SearchAgent</td></tr>
+      <tr><td>identity.*</td><td>IdentityAgent</td></tr>
+      <tr><td>streamfinder.*</td><td>StreamfinderAgent</td></tr>
+    </tbody>
+  </table>
+
+  <h2>MCP server</h2>
+  <p>Claude can call BitAgent agents as tools via the MCP stdio server. No HTTP — agent modules are imported directly. No payment gate in MCP mode; cost is reported in the response but not enforced.</p>
+  <pre><span style="color:#8b949e"># .mcp.json (Claude Code config)</span>
+{
+  "mcpServers": {
+    "bitagent": {
+      "command": "python",
+      "args": ["mcp_server.py"]
+    }
+  }
+}</pre>
+  <p>Available MCP tools: <code>translate</code>, <code>search</code>, <code>fetch_url</code>, <code>get_price</code>, <code>convert_sats</code>. Each returns a <code>cost_sats</code> field.</p>
+
+  <h2>SDEN relationship</h2>
+  <p>SDEN (<em>Sensor Data Exchange Node</em>) is a companion protocol for IoT devices that sell signed sensor data via Lightning. A SDEN producer node <strong>is</strong> a BitAgent agent — it uses BitAgent's wallet, Nostr discovery, and DID identity. The repos are one system; <code>SensorAgent</code> should extend BitAgent's <code>Agent</code> base class.</p>
+
+</div>
+
+<footer>
+  <p>BitAgent · <a href="https://github.com/intrinsicinvestment91/bitagent" target="_blank">GitHub</a> · <a href="https://bitagent-production.up.railway.app/docs" target="_blank">Live API</a> · MIT License</p>
+</footer>
+
+</body>
+</html>

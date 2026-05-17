@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>API Reference — BitAgent</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0d1117; --surface: #161b22; --border: #30363d;
+      --orange: #f7931a; --text: #e6edf3; --muted: #8b949e;
+      --green: #3fb950; --blue: #58a6ff; --purple: #a371f7; --red: #f85149;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    }
+    body { background: var(--bg); color: var(--text); font-family: var(--font); line-height: 1.6; }
+    nav {
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      padding: 0 2rem; display: flex; align-items: center; gap: 2rem;
+      height: 56px; position: sticky; top: 0; z-index: 100;
+    }
+    nav .logo { font-weight: 700; font-size: 1.1rem; color: var(--orange); text-decoration: none; }
+    nav a { color: var(--muted); text-decoration: none; font-size: 0.9rem; }
+    nav a:hover, nav a.active { color: var(--text); }
+    nav .spacer { flex: 1; }
+    nav .badge { background: var(--orange); color: #000; font-size: 0.7rem; font-weight: 700; padding: 2px 8px; border-radius: 99px; text-decoration: none; }
+
+    .layout { display: grid; grid-template-columns: 220px 1fr; min-height: calc(100vh - 56px); }
+    @media (max-width: 700px) { .layout { grid-template-columns: 1fr; } }
+
+    .sidebar {
+      background: var(--surface); border-right: 1px solid var(--border);
+      padding: 2rem 0; position: sticky; top: 56px; height: calc(100vh - 56px); overflow-y: auto;
+    }
+    .sidebar-section { padding: 0 1.25rem; margin-bottom: 1.5rem; }
+    .sidebar-section .label { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.8px; color: var(--muted); margin-bottom: 0.5rem; }
+    .sidebar-section a {
+      display: block; font-size: 0.82rem; color: var(--muted);
+      text-decoration: none; padding: 3px 0; transition: color 0.15s;
+    }
+    .sidebar-section a:hover { color: var(--text); }
+
+    .main { padding: 3rem 2.5rem; max-width: 760px; }
+
+    h1 { font-size: 1.8rem; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 0.4rem; }
+    h2 { font-size: 1.25rem; font-weight: 700; letter-spacing: -0.3px; margin: 2.5rem 0 0.5rem; scroll-margin-top: 72px; }
+    h3 { font-size: 1rem; font-weight: 600; margin: 1.5rem 0 0.4rem; }
+    p { color: var(--muted); font-size: 0.9rem; margin-bottom: 0.75rem; }
+    p strong { color: var(--text); }
+
+    .endpoint {
+      display: flex; align-items: center; gap: 0.75rem;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 6px; padding: 0.7rem 1rem; margin-bottom: 0.75rem;
+      scroll-margin-top: 72px;
+    }
+    .method {
+      font-family: var(--mono); font-size: 0.72rem; font-weight: 700;
+      padding: 2px 8px; border-radius: 4px; white-space: nowrap;
+    }
+    .method.get { background: rgba(63,185,80,0.15); color: var(--green); }
+    .method.post { background: rgba(88,166,255,0.15); color: var(--blue); }
+    .path { font-family: var(--mono); font-size: 0.85rem; color: var(--text); flex: 1; }
+    .endpoint-note { font-size: 0.78rem; color: var(--muted); }
+
+    pre {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: 1rem 1.25rem; overflow-x: auto;
+      font-family: var(--mono); font-size: 0.78rem; line-height: 1.65; margin: 0.75rem 0 1.25rem;
+    }
+    code { font-family: var(--mono); font-size: 0.84em; color: var(--orange); background: rgba(247,147,26,0.1); padding: 1px 5px; border-radius: 3px; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 0.83rem; margin: 0.75rem 0 1.25rem; }
+    th { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 2px solid var(--border); color: var(--muted); font-weight: 600; font-size: 0.7rem; text-transform: uppercase; }
+    td { padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+    tr:last-child td { border-bottom: none; }
+    td:first-child { font-family: var(--mono); font-size: 0.78rem; color: var(--orange); }
+    td.req { color: var(--red); font-size: 0.75rem; }
+    td.opt { color: var(--muted); font-size: 0.75rem; }
+
+    .status { font-family: var(--mono); font-size: 0.8rem; padding: 2px 8px; border-radius: 4px; font-weight: 600; }
+    .s200 { background: rgba(63,185,80,0.12); color: var(--green); }
+    .s402 { background: rgba(247,147,26,0.12); color: var(--orange); }
+    .s404 { background: rgba(248,81,73,0.12); color: var(--red); }
+    .s422 { background: rgba(248,81,73,0.12); color: var(--red); }
+
+    footer { border-top: 1px solid var(--border); padding: 2rem; text-align: center; color: var(--muted); font-size: 0.8rem; }
+    footer a { color: var(--muted); text-decoration: none; }
+  </style>
+</head>
+<body>
+
+<nav>
+  <a class="logo" href="index.html">⚡ BitAgent</a>
+  <a href="index.html">Overview</a>
+  <a href="agents.html">Agents</a>
+  <a href="architecture.html">Architecture</a>
+  <a href="payments.html">Payments</a>
+  <a href="discovery.html">Discovery</a>
+  <a href="api.html" class="active">API</a>
+  <span class="spacer"></span>
+  <a class="badge" href="https://bitagent-production.up.railway.app/docs" target="_blank">Live Docs ↗</a>
+</nav>
+
+<div class="layout">
+  <nav class="sidebar">
+    <div class="sidebar-section">
+      <div class="label">General</div>
+      <a href="#base">Base URL</a>
+      <a href="#payment">Payment pattern</a>
+      <a href="#health">Health</a>
+    </div>
+    <div class="sidebar-section">
+      <div class="label">Agents</div>
+      <a href="#polyglot">Polyglot</a>
+      <a href="#oracle">Oracle</a>
+      <a href="#search">Search</a>
+      <a href="#fetch">WebFetch</a>
+    </div>
+    <div class="sidebar-section">
+      <div class="label">A2A JSON-RPC</div>
+      <a href="#a2a">POST /a2a</a>
+      <a href="#a2a-oracle">oracle.*</a>
+      <a href="#a2a-search">search.*</a>
+      <a href="#a2a-fetch">fetch.*</a>
+      <a href="#a2a-identity">identity.*</a>
+      <a href="#a2a-streamfinder">streamfinder.*</a>
+    </div>
+    <div class="sidebar-section">
+      <div class="label">Registry</div>
+      <a href="#registry">GET /agents/registry</a>
+      <a href="#registry-id">GET /agents/registry/{id}</a>
+    </div>
+    <div class="sidebar-section">
+      <div class="label">System</div>
+      <a href="#status">Agent status</a>
+      <a href="#wallet">Wallet balance</a>
+      <a href="#nip05">NIP-05</a>
+    </div>
+  </nav>
+
+  <div class="main">
+    <h1>API Reference</h1>
+    <p>All endpoints below are live at the production deployment.</p>
+
+    <!-- BASE URL -->
+    <h2 id="base">Base URL</h2>
+    <pre>https://bitagent-production.up.railway.app</pre>
+    <p>Interactive Swagger UI: <code>/docs</code> &nbsp; ReDoc: <code>/redoc</code></p>
+
+    <!-- PAYMENT PATTERN -->
+    <h2 id="payment">Payment pattern</h2>
+    <p>All paid endpoints follow the same 402 → pay → resubmit flow. If <code>payment_hash</code> is absent, the response is HTTP 402 with an invoice.</p>
+    <table>
+      <thead><tr><th>Field</th><th>Direction</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td>payment_hash</td><td>Request</td><td>SHA-256 of the paid invoice preimage (hex)</td></tr>
+        <tr><td>ecash_notes</td><td>Request</td><td>Fedimint ecash notes string (alternative to payment_hash)</td></tr>
+        <tr><td>invoice</td><td>402 Response</td><td>bolt11 Lightning invoice</td></tr>
+        <tr><td>amount_sats</td><td>402 Response</td><td>Amount required in satoshis</td></tr>
+        <tr><td>cost_sats</td><td>200 Response</td><td>Amount deducted (echoed back to client)</td></tr>
+      </tbody>
+    </table>
+
+    <!-- HEALTH -->
+    <h2 id="health">Health check</h2>
+    <div class="endpoint">
+      <span class="method get">GET</span>
+      <span class="path">/health</span>
+      <span class="endpoint-note">No auth, no payment</span>
+    </div>
+    <pre>{ "status": "healthy", "version": "1.0.0" }</pre>
+
+    <!-- POLYGLOT -->
+    <h2 id="polyglot">Polyglot — /polyglot</h2>
+    <div class="endpoint">
+      <span class="method post">POST</span>
+      <span class="path">/polyglot/translate</span>
+      <span class="endpoint-note">100 sats</span>
+    </div>
+    <table>
+      <thead><tr><th>Field</th><th></th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td>text</td><td class="req">required</td><td>Text to translate (max 5000 chars)</td></tr>
+        <tr><td>source_lang</td><td class="req">required</td><td>BCP-47 language code (e.g. "en")</td></tr>
+        <tr><td>target_lang</td><td class="req">required</td><td>BCP-47 language code (e.g. "es")</td></tr>
+        <tr><td>payment_hash</td><td class="opt">optional</td><td>Omit to receive invoice</td></tr>
+      </tbody>
+    </table>
+    <pre><span style="color:#8b949e"># Request</span>
+{
+  "text": "Hello, world",
+  "source_lang": "en",
+  "target_lang": "es",
+  "payment_hash": "1b741d85..."
+}
+
+<span style="color:#8b949e"># 200 Response</span>
+{ "translated_text": "Hola, mundo", "cost_sats": 100 }</pre>
+
+    <!-- ORACLE -->
+    <h2 id="oracle">Price Oracle — /oracle</h2>
+    <div class="endpoint">
+      <span class="method get">GET</span>
+      <span class="path">/oracle/price/{asset}</span>
+      <span class="endpoint-note">2 sats</span>
+    </div>
+    <pre>GET /oracle/price/bitcoin?payment_hash=...
+
+{ "asset": "bitcoin", "price_usd": 95420.00, "cost_sats": 2 }</pre>
+
+    <!-- SEARCH -->
+    <h2 id="search">Search — /search</h2>
+    <div class="endpoint">
+      <span class="method post">POST</span>
+      <span class="path">/search/search</span>
+      <span class="endpoint-note">10 sats</span>
+    </div>
+    <table>
+      <thead><tr><th>Field</th><th></th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td>query</td><td class="req">required</td><td>Search query string</td></tr>
+        <tr><td>max_results</td><td class="opt">optional</td><td>Max results (default 10)</td></tr>
+        <tr><td>payment_hash</td><td class="opt">optional</td><td>Omit to receive invoice</td></tr>
+      </tbody>
+    </table>
+    <pre>{ "query": "bitcoin news", "payment_hash": "..." }
+
+{ "results": [{ "title": "...", "url": "...", "snippet": "..." }], "cost_sats": 10 }</pre>
+
+    <!-- FETCH -->
+    <h2 id="fetch">Web Fetch — /fetch</h2>
+    <div class="endpoint">
+      <span class="method post">POST</span>
+      <span class="path">/fetch/fetch</span>
+      <span class="endpoint-note">25 sats</span>
+    </div>
+    <pre>{ "url": "https://example.com", "payment_hash": "..." }
+
+{ "content": "&lt;html&gt;...&lt;/html&gt;", "cost_sats": 25 }</pre>
+
+    <!-- A2A -->
+    <h2 id="a2a">A2A JSON-RPC — POST /a2a</h2>
+    <p>All A2A methods share a single endpoint using JSON-RPC 2.0 envelope.</p>
+    <pre>{
+  "jsonrpc": "2.0",
+  "method": "&lt;method&gt;",
+  "params": { ... },
+  "id": 1
+}
+
+<span style="color:#8b949e"># Response</span>
+{ "jsonrpc": "2.0", "result": { ... }, "id": 1 }</pre>
+
+    <h3 id="a2a-oracle">oracle.*</h3>
+    <table>
+      <thead><tr><th>Method</th><th>Params</th><th>Returns</th></tr></thead>
+      <tbody>
+        <tr><td>oracle.price</td><td>asset, currency?</td><td>price_usd, timestamp</td></tr>
+        <tr><td>oracle.prices</td><td>assets[], currency?</td><td>prices{}</td></tr>
+        <tr><td>oracle.convert</td><td>amount, from_asset, to_asset</td><td>converted_amount</td></tr>
+      </tbody>
+    </table>
+
+    <h3 id="a2a-search">search.*</h3>
+    <table>
+      <thead><tr><th>Method</th><th>Params</th><th>Returns</th></tr></thead>
+      <tbody>
+        <tr><td>search.query</td><td>query, max_results?</td><td>results[]</td></tr>
+      </tbody>
+    </table>
+
+    <h3 id="a2a-fetch">fetch.*</h3>
+    <table>
+      <thead><tr><th>Method</th><th>Params</th><th>Returns</th></tr></thead>
+      <tbody>
+        <tr><td>fetch.url</td><td>url, timeout?</td><td>content, status_code</td></tr>
+      </tbody>
+    </table>
+
+    <h3 id="a2a-identity">identity.*</h3>
+    <table>
+      <thead><tr><th>Method</th><th>Params</th><th>Returns</th></tr></thead>
+      <tbody>
+        <tr><td>identity.register_nip05</td><td>handle, domain, pubkey, relays?</td><td>invoice or success</td></tr>
+        <tr><td>identity.get_identity</td><td>handle, domain</td><td>identity record</td></tr>
+        <tr><td>identity.list_verified</td><td>domain?</td><td>verified[]</td></tr>
+        <tr><td>identity.search</td><td>query</td><td>matches[]</td></tr>
+        <tr><td>identity.get_trust_signal</td><td>pubkey</td><td>trust_score, warning?</td></tr>
+      </tbody>
+    </table>
+
+    <h3 id="a2a-streamfinder">streamfinder.*</h3>
+    <table>
+      <thead><tr><th>Method</th><th>Params</th><th>Returns</th></tr></thead>
+      <tbody>
+        <tr><td>streamfinder.search</td><td>query, requester_pubkey?</td><td>streams[]</td></tr>
+      </tbody>
+    </table>
+
+    <!-- REGISTRY -->
+    <h2 id="registry">Agent Registry</h2>
+    <div class="endpoint">
+      <span class="method get">GET</span>
+      <span class="path">/agents/registry</span>
+      <span class="endpoint-note">No auth · Cache-Control: max-age=10</span>
+    </div>
+    <table>
+      <thead><tr><th>Query param</th><th>Default</th><th>Constraints</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td>service</td><td>—</td><td>1–64 chars, [a-zA-Z0-9._-]</td><td>Filter by service capability</td></tr>
+        <tr><td>limit</td><td>50</td><td>1–100</td><td>Page size</td></tr>
+        <tr><td>offset</td><td>0</td><td>≥0</td><td>Skip N agents</td></tr>
+      </tbody>
+    </table>
+    <pre>{
+  "agents": [{
+    "agent_id": "bitagent-search",
+    "name": "SearchAgent",
+    "description": "Web search (10 sats)",
+    "endpoint": "https://bitagent-production.up.railway.app/search",
+    "services": ["search.query"],
+    "public_key": "a1b2c3...",
+    "protocol": "lightning+nostr",
+    "last_seen": 1747440000.0,
+    "reputation_score": 0.0,
+    "capabilities": {}
+  }],
+  "count": 1,
+  "total": 7,
+  "offset": 0,
+  "limit": 50,
+  "source": "local"
+}</pre>
+
+    <div class="endpoint" id="registry-id">
+      <span class="method get">GET</span>
+      <span class="path">/agents/registry/{agent_id}</span>
+      <span class="endpoint-note">Returns AgentEntry or 404</span>
+    </div>
+
+    <!-- SYSTEM -->
+    <h2 id="status">Agent status</h2>
+    <div class="endpoint">
+      <span class="method get">GET</span>
+      <span class="path">/agents/status</span>
+    </div>
+    <pre>{ "polyglot": {"status":"running"}, "search": {"status":"running"}, ... }</pre>
+
+    <h2 id="wallet">Wallet balance</h2>
+    <div class="endpoint">
+      <span class="method get">GET</span>
+      <span class="path">/wallet/balance</span>
+    </div>
+    <pre>{ "balance_sats": 68234 }</pre>
+
+    <h2 id="nip05">NIP-05 well-known</h2>
+    <div class="endpoint">
+      <span class="method get">GET</span>
+      <span class="path">/.well-known/nostr.json?name=alice</span>
+    </div>
+    <pre>{ "names": { "alice": "npub_hex..." }, "relays": { "npub_hex...": ["wss://..."] } }</pre>
+
+  </div><!-- /main -->
+</div><!-- /layout -->
+
+<footer>
+  <p>BitAgent · <a href="https://github.com/intrinsicinvestment91/bitagent" target="_blank">GitHub</a> · <a href="https://bitagent-production.up.railway.app/docs" target="_blank">Live API</a> · MIT License</p>
+</footer>
+
+</body>
+</html>

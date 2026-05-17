@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Payments — BitAgent</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0d1117; --surface: #161b22; --border: #30363d;
+      --orange: #f7931a; --text: #e6edf3; --muted: #8b949e;
+      --green: #3fb950; --blue: #58a6ff; --purple: #a371f7;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    }
+    body { background: var(--bg); color: var(--text); font-family: var(--font); line-height: 1.6; }
+    nav {
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      padding: 0 2rem; display: flex; align-items: center; gap: 2rem;
+      height: 56px; position: sticky; top: 0; z-index: 100;
+    }
+    nav .logo { font-weight: 700; font-size: 1.1rem; color: var(--orange); text-decoration: none; }
+    nav a { color: var(--muted); text-decoration: none; font-size: 0.9rem; }
+    nav a:hover, nav a.active { color: var(--text); }
+    nav .spacer { flex: 1; }
+    nav .badge { background: var(--orange); color: #000; font-size: 0.7rem; font-weight: 700; padding: 2px 8px; border-radius: 99px; text-decoration: none; }
+
+    .page-header { max-width: 900px; margin: 3rem auto 0; padding: 0 2rem 2rem; border-bottom: 1px solid var(--border); }
+    .page-header h1 { font-size: 2rem; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 0.4rem; }
+    .page-header p { color: var(--muted); }
+
+    .content { max-width: 900px; margin: 0 auto; padding: 3rem 2rem; }
+    h2 { font-size: 1.35rem; font-weight: 700; letter-spacing: -0.3px; margin: 2.5rem 0 0.4rem; }
+    h2:first-child { margin-top: 0; }
+    p { color: var(--muted); font-size: 0.92rem; margin-bottom: 1rem; }
+    p strong { color: var(--text); }
+
+    .path-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin: 1.5rem 0; }
+    @media (max-width: 600px) { .path-grid { grid-template-columns: 1fr; } }
+    .path-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.75rem;
+    }
+    .path-card .path-badge {
+      display: inline-block;
+      font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px;
+      padding: 2px 10px; border-radius: 99px; margin-bottom: 1rem;
+    }
+    .path-card.lightning .path-badge { background: rgba(247,147,26,0.15); color: var(--orange); border: 1px solid var(--orange); }
+    .path-card.ecash .path-badge { background: rgba(163,113,247,0.15); color: var(--purple); border: 1px solid var(--purple); }
+    .path-card h3 { font-size: 1.1rem; font-weight: 700; margin-bottom: 0.4rem; }
+    .path-card p { font-size: 0.85rem; color: var(--muted); }
+    .path-card ul { list-style: none; margin-top: 0.75rem; }
+    .path-card li { font-size: 0.83rem; color: var(--muted); padding: 3px 0; }
+    .path-card.lightning li::before { content: "⚡ "; }
+    .path-card.ecash li::before { content: "🍃 "; }
+
+    .flow-box {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: 1.5rem 2rem; margin: 1.25rem 0;
+    }
+    .flow-step { display: flex; align-items: flex-start; gap: 1rem; margin-bottom: 1rem; }
+    .flow-step:last-child { margin-bottom: 0; }
+    .step-num {
+      background: var(--orange); color: #000;
+      font-size: 0.72rem; font-weight: 700;
+      width: 22px; height: 22px;
+      border-radius: 50%; display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0; margin-top: 2px;
+    }
+    .step-text h4 { font-size: 0.9rem; font-weight: 600; margin-bottom: 2px; }
+    .step-text p { font-size: 0.82rem; color: var(--muted); margin: 0; }
+
+    pre {
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 8px; padding: 1rem 1.25rem; overflow-x: auto;
+      font-family: var(--mono); font-size: 0.78rem; line-height: 1.65;
+      margin: 1rem 0;
+    }
+    code { font-family: var(--mono); font-size: 0.84em; color: var(--orange); background: rgba(247,147,26,0.1); padding: 1px 5px; border-radius: 3px; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 1rem 0; }
+    th { text-align: left; padding: 0.6rem 1rem; border-bottom: 2px solid var(--border); color: var(--muted); font-weight: 600; font-size: 0.72rem; text-transform: uppercase; }
+    td { padding: 0.6rem 1rem; border-bottom: 1px solid var(--border); }
+    tr:last-child td { border-bottom: none; }
+
+    .callout {
+      background: rgba(247,147,26,0.07); border: 1px solid rgba(247,147,26,0.3);
+      border-radius: 8px; padding: 1rem 1.25rem; font-size: 0.85rem;
+      color: var(--text); margin: 1.25rem 0;
+    }
+    .callout strong { color: var(--orange); }
+
+    footer { border-top: 1px solid var(--border); padding: 2rem; text-align: center; color: var(--muted); font-size: 0.8rem; }
+    footer a { color: var(--muted); text-decoration: none; }
+  </style>
+</head>
+<body>
+
+<nav>
+  <a class="logo" href="index.html">⚡ BitAgent</a>
+  <a href="index.html">Overview</a>
+  <a href="agents.html">Agents</a>
+  <a href="architecture.html">Architecture</a>
+  <a href="payments.html" class="active">Payments</a>
+  <a href="discovery.html">Discovery</a>
+  <a href="api.html">API</a>
+  <span class="spacer"></span>
+  <a class="badge" href="https://bitagent-production.up.railway.app/docs" target="_blank">Live Docs ↗</a>
+</nav>
+
+<div class="page-header">
+  <h1>Payments</h1>
+  <p>Two independent payment paths: Lightning Network (LNbits) and Fedimint ecash.</p>
+</div>
+
+<div class="content">
+
+  <h2>Two payment paths</h2>
+  <p>Agents accept both Lightning invoices and Fedimint ecash notes. The paths are completely independent — a client can use either without the other being configured.</p>
+
+  <div class="path-grid">
+    <div class="path-card lightning">
+      <div class="path-badge">Lightning</div>
+      <h3>⚡ LNbits</h3>
+      <p>The primary payment path. Every agent endpoint returns a bolt11 invoice on a 402 response. The client pays, then resubmits with the <code>payment_hash</code>.</p>
+      <ul>
+        <li>Real payments verified in production</li>
+        <li>Live wallet: ~68k sats</li>
+        <li>Backed by LNbits REST API</li>
+        <li>Requires LNBITS_URL + LNBITS_API_KEY</li>
+      </ul>
+    </div>
+    <div class="path-card ecash">
+      <div class="path-badge">Ecash</div>
+      <h3>🍃 Fedimint</h3>
+      <p>An additive second path. Agents accept <code>ecash_notes</code> alongside <code>payment_hash</code>. The notes are validated non-destructively first, then reissued into the federation wallet.</p>
+      <ul>
+        <li>Live in production alongside Lightning</li>
+        <li>Backed by fedimint-clientd HTTP API</li>
+        <li>Requires FEDIMINT_CLIENTD_URL + password</li>
+        <li>Gracefully disabled if not configured</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>Lightning payment flow</h2>
+  <div class="flow-box">
+    <div class="flow-step">
+      <div class="step-num">1</div>
+      <div class="step-text">
+        <h4>Client sends request without payment</h4>
+        <p>Any POST to a paid endpoint without <code>payment_hash</code> returns HTTP 402.</p>
+      </div>
+    </div>
+    <div class="flow-step">
+      <div class="step-num">2</div>
+      <div class="step-text">
+        <h4>Agent issues a Lightning invoice</h4>
+        <p>402 response includes a bolt11 invoice and the <code>amount_sats</code>. If Fedimint is enabled, also includes <code>ecash_accepted: true</code> and <code>ecash_amount_msats</code>.</p>
+      </div>
+    </div>
+    <div class="flow-step">
+      <div class="step-num">3</div>
+      <div class="step-text">
+        <h4>Client pays the invoice</h4>
+        <p>Any Lightning wallet can pay. The <code>payment_hash</code> is derived from the bolt11 string.</p>
+      </div>
+    </div>
+    <div class="flow-step">
+      <div class="step-num">4</div>
+      <div class="step-text">
+        <h4>Client resubmits with payment_hash</h4>
+        <p>The agent calls <code>AgentWallet.check_invoice(payment_hash)</code>. On success it runs the service and returns the result with <code>cost_sats</code>.</p>
+      </div>
+    </div>
+  </div>
+
+  <pre><span style="color:#8b949e"># Step 1 — no payment_hash → 402</span>
+curl -X POST https://bitagent-production.up.railway.app/search/search \
+  -d '{"query": "bitcoin"}'
+
+<span style="color:#3fb950">HTTP 402</span>
+{
+  "invoice": "lnbc100n1p4q3ala...",
+  "amount_sats": 10,
+  "ecash_accepted": true,
+  "ecash_amount_msats": 10000
+}
+
+<span style="color:#8b949e"># Step 2 — pay, then resubmit</span>
+curl -X POST https://bitagent-production.up.railway.app/search/search \
+  -d '{
+    "query": "bitcoin",
+    "payment_hash": "1b741d85..."
+  }'
+
+<span style="color:#3fb950">HTTP 200</span>
+{ "results": [...], "cost_sats": 10 }</pre>
+
+  <h2>Fedimint ecash flow</h2>
+  <p>The ecash path uses a <strong>validate → reissue</strong> two-step to avoid double-spend without sacrificing speed.</p>
+  <div class="flow-box">
+    <div class="flow-step">
+      <div class="step-num">1</div>
+      <div class="step-text">
+        <h4>Client sends ecash_notes</h4>
+        <p>Include <code>ecash_notes</code> in the request body instead of (or alongside) <code>payment_hash</code>.</p>
+      </div>
+    </div>
+    <div class="flow-step">
+      <div class="step-num">2</div>
+      <div class="step-text">
+        <h4>Agent validates (non-destructive)</h4>
+        <p><code>FedimintWallet.validate(notes, amount_msats)</code> checks the notes against the federation without redeeming them. Returns <code>True/False</code>.</p>
+      </div>
+    </div>
+    <div class="flow-step">
+      <div class="step-num">3</div>
+      <div class="step-text">
+        <h4>Agent reissues (destructive)</h4>
+        <p>On successful validation, <code>FedimintWallet.reissue(notes)</code> redeems the notes into the federation wallet. This is the point of no return.</p>
+      </div>
+    </div>
+    <div class="flow-step">
+      <div class="step-num">4</div>
+      <div class="step-text">
+        <h4>Service is run</h4>
+        <p>Same result as Lightning path. Response includes <code>cost_sats</code>.</p>
+      </div>
+    </div>
+  </div>
+
+  <h2>Wallet tiers</h2>
+  <table>
+    <thead><tr><th>Wallet</th><th>Location</th><th>Required config</th><th>Used by</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>_SimWallet</td>
+        <td>src/agents/base_agent.py</td>
+        <td>None</td>
+        <td>BaseAgent subclasses, examples, tests — in-memory, no real payments</td>
+      </tr>
+      <tr>
+        <td>AgentWallet</td>
+        <td>agent_wallet.py</td>
+        <td>LNBITS_URL, LNBITS_API_KEY</td>
+        <td>All live agents — lazy loaded, raises if config missing</td>
+      </tr>
+      <tr>
+        <td>FedimintWallet</td>
+        <td>src/wallets/fedimint_wallet.py</td>
+        <td>FEDIMINT_CLIENTD_URL, FEDIMINT_CLIENTD_PASSWORD</td>
+        <td>All live agents — eagerly instantiated, disabled gracefully if unconfigured</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout">
+    <strong>Important:</strong> The <code>@require_payment</code> decorator in <code>src/core/payment.py</code> uses an incompatible escrow/<code>PaymentSecurityManager</code> system and is <strong>not wired to the real LNbits wallet</strong>. Do not use it. All live agents implement payment checks inline.
+  </div>
+
+  <h2>Agent prices</h2>
+  <table>
+    <thead><tr><th>Agent</th><th>Price</th><th>Per</th></tr></thead>
+    <tbody>
+      <tr><td>PriceOracleAgent</td><td>2 sats</td><td>request</td></tr>
+      <tr><td>SearchAgent</td><td>10 sats</td><td>query</td></tr>
+      <tr><td>IdentityAgent</td><td>10–1000 sats</td><td>operation</td></tr>
+      <tr><td>WebFetchAgent</td><td>25 sats</td><td>URL</td></tr>
+      <tr><td>StreamfinderAgent</td><td>100 sats</td><td>request</td></tr>
+      <tr><td>PolyglotAgent (translate)</td><td>100 sats</td><td>request</td></tr>
+      <tr><td>PolyglotAgent (transcribe)</td><td>250 sats</td><td>request</td></tr>
+      <tr><td>CoordinatorAgent</td><td>350 sats</td><td>workflow</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Environment variables</h2>
+  <pre><span style="color:#8b949e"># Required for Lightning payments</span>
+LNBITS_URL=https://your-lnbits-instance.com
+LNBITS_API_KEY=your_lnbits_invoice_key
+
+<span style="color:#8b949e"># Optional — Fedimint ecash (second payment path)</span>
+FEDIMINT_CLIENTD_URL=http://localhost:3333
+FEDIMINT_CLIENTD_PASSWORD=your_password</pre>
+
+</div>
+
+<footer>
+  <p>BitAgent · <a href="https://github.com/intrinsicinvestment91/bitagent" target="_blank">GitHub</a> · <a href="https://bitagent-production.up.railway.app/docs" target="_blank">Live API</a> · MIT License</p>
+</footer>
+
+</body>
+</html>
