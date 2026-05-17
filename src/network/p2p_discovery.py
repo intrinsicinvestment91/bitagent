@@ -18,19 +18,30 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Nostr imports (optional dependency)
+# Nostr imports (optional dependency).
+# RelayManager is intentionally excluded: python-nostr's relay.py uses a
+# mutable dataclass default (RelayPolicy) that is rejected by Python 3.13+.
+# We replace relay connectivity with a minimal aiohttp WebSocket publisher.
 NOSTR_AVAILABLE = False
 NOSTR_IMPORT_ERROR = None
 try:
     from nostr.event import Event, EventKind
     from nostr.key import PrivateKey, PublicKey
-    from nostr.relay_manager import RelayManager
     from nostr.filter import Filter, Filters
     from nostr.message_type import ClientMessageType
     NOSTR_AVAILABLE = True
 except Exception as e:
     NOSTR_IMPORT_ERROR = e
     logger.warning("Nostr support unavailable; continuing with DHT-only discovery: %s", e)
+
+
+async def _ws_publish(url: str, msg: str) -> None:
+    """Send one NIP-01 message to a single relay WebSocket, best-effort."""
+    timeout = aiohttp.ClientTimeout(connect=5, total=8)
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        async with session.ws_connect(url, ssl=False, heartbeat=None) as ws:
+            await ws.send_str(msg)
+            await asyncio.sleep(0.3)  # brief wait for relay ACK
 
 class DiscoveryProtocol(Enum):
     NOSTR = "nostr"
@@ -199,21 +210,15 @@ class EnhancedNostrDiscovery:
             )
 
         self.public_key = self.private_key.public_key
-        self.relay_manager = RelayManager()
         self.agent_cache = {}
         self.reputation_scores = {}
-        
-        # Add default relays
         self.relays = [
             "wss://relay.damus.io",
             "wss://relay.snort.social",
             "wss://nos.lol",
             "wss://nostr.wine",
-            "wss://relay.nostr.band"
+            "wss://relay.nostr.band",
         ]
-        
-        for relay in self.relays:
-            self.relay_manager.add_relay(relay)
     
     async def broadcast_agent(self, agent_info: AgentInfo):
         """Broadcast agent information via Nostr."""
@@ -230,21 +235,20 @@ class EnhancedNostrDiscovery:
         }
         
         event = Event(
-            pubkey=self.public_key.hex(),
-            kind=30078,  # Custom agent announcement kind
+            public_key=self.public_key.hex(),
+            kind=30078,
             content=json.dumps(content),
             tags=[
                 ["t", "bitagent"],
                 ["t", "agent-discovery"],
                 ["service", *agent_info.services],
-                ["endpoint", agent_info.endpoint]
-            ]
+                ["endpoint", agent_info.endpoint],
+            ],
         )
-        
+
         self.private_key.sign_event(event)
-        
         await self._publish_event(event)
-        logging.info(f"Broadcasted agent {agent_info.name} via Nostr")
+        logger.info("Broadcasted agent %s via Nostr", agent_info.name)
     
     async def discover_agents(self, query: DiscoveryQuery) -> List[AgentInfo]:
         """Discover agents using Nostr."""
@@ -292,40 +296,19 @@ class EnhancedNostrDiscovery:
         reputation = self.reputation_scores.get(agent_info.agent_id, 0.0)
         return reputation >= 0.0  # Basic filtering - can be enhanced
     
-    async def _publish_event(self, event: Event):
-        """Publish event to Nostr relays."""
-        self.relay_manager.open_connections({"cert_reqs": 0})
-        await asyncio.sleep(1.25)  # Let relays connect
-        
-        msg = json.dumps([ClientMessageType.EVENT, event.to_dict()])
-        for relay in self.relay_manager.relays.values():
-            relay.send_message(msg)
-        
-        await asyncio.sleep(2)
-        self.relay_manager.close_connections()
-    
-    async def _query_events(self, filters: Filters) -> List[Event]:
-        """Query events from Nostr relays."""
-        events = []
-        
-        self.relay_manager.open_connections({"cert_reqs": 0})
-        await asyncio.sleep(1.25)
-        
-        # Subscribe to events
-        subscription_id = f"agent-discovery-{int(time.time())}"
-        msg = json.dumps([ClientMessageType.REQUEST, subscription_id, filters.to_json_array()])
-        
-        for relay in self.relay_manager.relays.values():
-            relay.send_message(msg)
-        
-        # Collect events
-        await asyncio.sleep(5)  # Wait for responses
-        
-        for relay in self.relay_manager.relays.values():
-            events.extend(relay.events)
-        
-        self.relay_manager.close_connections()
-        return events
+    async def _publish_event(self, event: Event) -> None:
+        """Publish a signed Nostr event to all configured relays concurrently."""
+        msg = event.to_message()  # already a complete NIP-01 '["EVENT", {...}]' JSON string
+        tasks = [_ws_publish(url, msg) for url in self.relays]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        failed = sum(1 for r in results if isinstance(r, Exception))
+        if failed:
+            logger.debug("Nostr: %d/%d relay(s) did not acknowledge event", failed, len(self.relays))
+
+    async def _query_events(self, filters) -> List[Event]:
+        """Query events from relays (not yet implemented; returns empty list)."""
+        logger.debug("Nostr: relay query not implemented; returning empty")
+        return []
 
 class P2PDiscoveryManager:
     """Main discovery manager coordinating multiple discovery protocols."""

@@ -1,31 +1,25 @@
 """
 Tests for persistent vs ephemeral Nostr identity in EnhancedNostrDiscovery.
-Covers: valid persistent key, no-key ephemeral fallback, malformed key fallback.
+Covers: valid persistent key, no-key ephemeral fallback, malformed key fallback,
+        unavailable-Nostr error path, and _ws_publish relay helper.
 
-The python-nostr library's RelayManager fails to import under Python 3.13 due
-to a pydantic-v2 dataclass incompatibility (RelayPolicy mutable default).
-PrivateKey and PublicKey import correctly. Tests therefore patch NOSTR_AVAILABLE
-and inject a mock RelayManager so the constructor's key-handling logic can be
-exercised without the relay stack.
+python-nostr's Event/PrivateKey/Filter modules import cleanly under Python 3.13.
+RelayManager was dropped (its relay.py uses a mutable dataclass default rejected
+by Python 3.13); relay connectivity is now handled by _ws_publish via aiohttp.
+NOSTR_AVAILABLE is therefore True at import time — no patching required for the
+happy-path tests.
 """
 
+import asyncio
 import logging
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, AsyncMock, MagicMock
 from nostr.key import PrivateKey
 
 import src.network.p2p_discovery as pd_module
 
 _LOG = "src.network.p2p_discovery"
 _NOSTR_AVAIL = "src.network.p2p_discovery.NOSTR_AVAILABLE"
-_RELAY_MGR = "src.network.p2p_discovery.RelayManager"
-
-
-@pytest.fixture(autouse=True)
-def _nostr_env():
-    """Patch NOSTR_AVAILABLE=True and inject a stub RelayManager for every test."""
-    with patch(_NOSTR_AVAIL, True), patch(_RELAY_MGR, MagicMock(), create=True):
-        yield
 
 
 class TestNostrPersistentIdentity:
@@ -106,3 +100,37 @@ class TestNostrMalformedKey:
         messages = [r.message.lower() for r in caplog.records]
         assert any("invalid" in m for m in messages)
         assert any("ephemeral" in m for m in messages)
+
+
+class TestNostrUnavailable:
+    """When NOSTR_AVAILABLE is False, EnhancedNostrDiscovery raises RuntimeError."""
+
+    def test_raises_when_nostr_unavailable(self):
+        with patch(_NOSTR_AVAIL, False):
+            with pytest.raises(RuntimeError, match="unavailable"):
+                pd_module.EnhancedNostrDiscovery()
+
+    def test_p2p_manager_skips_nostr_when_unavailable(self):
+        with patch(_NOSTR_AVAIL, False):
+            manager = pd_module.P2PDiscoveryManager()
+        assert manager.nostr_discovery is None
+        assert pd_module.DiscoveryProtocol.NOSTR not in manager.discovery_protocols
+
+
+class TestWsPublish:
+    """_ws_publish sends the NIP-01 message over a WebSocket connection."""
+
+    def test_sends_message_to_relay(self):
+        mock_ws = AsyncMock()
+        mock_ws.__aenter__ = AsyncMock(return_value=mock_ws)
+        mock_ws.__aexit__ = AsyncMock(return_value=False)
+
+        mock_session = AsyncMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=False)
+        mock_session.ws_connect = MagicMock(return_value=mock_ws)
+
+        with patch("src.network.p2p_discovery.aiohttp.ClientSession", return_value=mock_session):
+            asyncio.run(pd_module._ws_publish("wss://relay.example.com", '["EVENT",{}]'))
+
+        mock_ws.send_str.assert_awaited_once_with('["EVENT",{}]')
