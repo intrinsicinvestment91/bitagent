@@ -1,20 +1,22 @@
 """
-Tests for persistent vs ephemeral Nostr identity in EnhancedNostrDiscovery.
-Covers: valid persistent key, no-key ephemeral fallback, malformed key fallback,
-        unavailable-Nostr error path, and _ws_publish relay helper.
+Tests for persistent vs ephemeral Nostr identity in EnhancedNostrDiscovery,
+and for the relay query (_query_events / _ws_query) introduced in Packet 15.
 
 python-nostr's Event/PrivateKey/Filter modules import cleanly under Python 3.13.
 RelayManager was dropped (its relay.py uses a mutable dataclass default rejected
-by Python 3.13); relay connectivity is now handled by _ws_publish via aiohttp.
-NOSTR_AVAILABLE is therefore True at import time — no patching required for the
-happy-path tests.
+by Python 3.13); relay connectivity is now handled by _ws_publish/_ws_query via
+aiohttp. NOSTR_AVAILABLE is therefore True at import time — no patching required
+for the happy-path tests.
 """
 
 import asyncio
+import json
 import logging
+import time
 import pytest
 from unittest.mock import patch, AsyncMock, MagicMock
 from nostr.key import PrivateKey
+from nostr.filter import Filter, Filters
 
 import src.network.p2p_discovery as pd_module
 
@@ -134,3 +136,178 @@ class TestWsPublish:
             asyncio.run(pd_module._ws_publish("wss://relay.example.com", '["EVENT",{}]'))
 
         mock_ws.send_str.assert_awaited_once_with('["EVENT",{}]')
+
+
+# ---------------------------------------------------------------------------
+# Helpers shared by TestWsQuery and TestQueryEvents
+# ---------------------------------------------------------------------------
+
+def _raw_event(agent_id: str = "agent-1") -> dict:
+    return {
+        "pubkey": "aa" * 32,
+        "content": json.dumps({"agent_id": agent_id}),
+        "created_at": int(time.time()),
+        "kind": 30078,
+        "tags": [["t", "bitagent"]],
+        "sig": "cc" * 32,
+    }
+
+
+def _make_filters() -> Filters:
+    return Filters([Filter(kinds=[30078], since=int(time.time() - 3600))])
+
+
+# ---------------------------------------------------------------------------
+# _ws_query unit tests
+# ---------------------------------------------------------------------------
+
+class TestWsQuery:
+    """_ws_query collects EVENT messages and stops on EOSE or timeout."""
+
+    def _run(self, messages: list[str], url: str = "wss://relay.test") -> list[dict]:
+        """
+        Drive _ws_query against a fake WebSocket that yields `messages` in order.
+        Each call to receive_str() pops the next message from the list.
+        """
+        msg_iter = iter(messages)
+
+        async def fake_receive_str(timeout=None):
+            try:
+                return next(msg_iter)
+            except StopIteration:
+                raise asyncio.TimeoutError
+
+        mock_ws = AsyncMock()
+        mock_ws.receive_str = fake_receive_str
+        mock_ws.send_str = AsyncMock()
+        mock_ws.__aenter__ = AsyncMock(return_value=mock_ws)
+        mock_ws.__aexit__ = AsyncMock(return_value=False)
+
+        mock_session = AsyncMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=False)
+        mock_session.ws_connect = MagicMock(return_value=mock_ws)
+
+        with patch("src.network.p2p_discovery.aiohttp.ClientSession", return_value=mock_session):
+            return asyncio.run(pd_module._ws_query(url, '["REQ","sub1",{}]', "sub1"))
+
+    def test_returns_events_before_eose(self):
+        evt = json.dumps(["EVENT", "sub1", _raw_event("a1")])
+        eose = json.dumps(["EOSE", "sub1"])
+        results = self._run([evt, eose])
+        assert len(results) == 1
+        assert results[0]["content"] == json.dumps({"agent_id": "a1"})
+
+    def test_multiple_events_before_eose(self):
+        msgs = [
+            json.dumps(["EVENT", "sub1", _raw_event("a1")]),
+            json.dumps(["EVENT", "sub1", _raw_event("a2")]),
+            json.dumps(["EOSE", "sub1"]),
+        ]
+        results = self._run(msgs)
+        assert len(results) == 2
+
+    def test_stops_at_eose_ignores_later_events(self):
+        msgs = [
+            json.dumps(["EVENT", "sub1", _raw_event("a1")]),
+            json.dumps(["EOSE", "sub1"]),
+            json.dumps(["EVENT", "sub1", _raw_event("a2")]),  # should not be collected
+        ]
+        results = self._run(msgs)
+        assert len(results) == 1
+
+    def test_timeout_returns_partial_results(self):
+        # Only one event before the iterator runs out (simulating timeout)
+        msgs = [json.dumps(["EVENT", "sub1", _raw_event("a1")])]
+        results = self._run(msgs)
+        assert len(results) == 1
+
+    def test_empty_result_when_no_events(self):
+        results = self._run([json.dumps(["EOSE", "sub1"])])
+        assert results == []
+
+    def test_malformed_json_skipped(self):
+        msgs = [
+            "not valid json{{",
+            json.dumps(["EVENT", "sub1", _raw_event("a1")]),
+            json.dumps(["EOSE", "sub1"]),
+        ]
+        results = self._run(msgs)
+        assert len(results) == 1
+
+    def test_event_for_wrong_sub_id_skipped(self):
+        msgs = [
+            json.dumps(["EVENT", "other-sub", _raw_event("a1")]),
+            json.dumps(["EOSE", "sub1"]),
+        ]
+        results = self._run(msgs)
+        assert results == []
+
+    def test_connection_failure_returns_empty(self):
+        with patch("src.network.p2p_discovery.aiohttp.ClientSession", side_effect=OSError("refused")):
+            result = asyncio.run(pd_module._ws_query("wss://dead.relay", '["REQ","s",{}]', "s"))
+        assert result == []
+
+
+# ---------------------------------------------------------------------------
+# _query_events integration tests
+# ---------------------------------------------------------------------------
+
+class TestQueryEvents:
+    """_query_events aggregates results from all relays via _ws_query."""
+
+    def test_returns_events_from_all_relays(self):
+        async def fake_query(url, req_msg, sub_id, per_relay_timeout=5.0):
+            return [_raw_event(url[-4:])]  # one unique event per relay
+
+        async def run():
+            d = pd_module.EnhancedNostrDiscovery()
+            with patch("src.network.p2p_discovery._ws_query", side_effect=fake_query):
+                return await d._query_events(_make_filters())
+
+        events = asyncio.run(run())
+        assert len(events) == len(pd_module.EnhancedNostrDiscovery().relays)
+
+    def test_relay_failure_does_not_crash(self):
+        call_count = 0
+
+        async def flaky_query(url, req_msg, sub_id, per_relay_timeout=5.0):
+            nonlocal call_count
+            call_count += 1
+            if call_count % 2 == 0:
+                raise OSError("dead relay")
+            return [_raw_event("ok")]
+
+        async def run():
+            d = pd_module.EnhancedNostrDiscovery()
+            with patch("src.network.p2p_discovery._ws_query", side_effect=flaky_query):
+                return await d._query_events(_make_filters())
+
+        events = asyncio.run(run())
+        assert len(events) > 0  # at least the non-failing relays contributed
+
+    def test_all_relays_fail_returns_empty(self):
+        async def dead_query(url, req_msg, sub_id, per_relay_timeout=5.0):
+            return []
+
+        async def run():
+            d = pd_module.EnhancedNostrDiscovery()
+            with patch("src.network.p2p_discovery._ws_query", side_effect=dead_query):
+                return await d._query_events(_make_filters())
+
+        events = asyncio.run(run())
+        assert events == []
+
+    def test_malformed_event_dict_skipped(self):
+        """A raw event with bad fields should be dropped, not crash the method."""
+        async def bad_query(url, req_msg, sub_id, per_relay_timeout=5.0):
+            return [{"this": "is", "not": "a valid event"}]
+
+        async def run():
+            d = pd_module.EnhancedNostrDiscovery()
+            with patch("src.network.p2p_discovery._ws_query", side_effect=bad_query):
+                return await d._query_events(_make_filters())
+
+        # Should not raise; bad events are silently dropped
+        events = asyncio.run(run())
+        assert isinstance(events, list)

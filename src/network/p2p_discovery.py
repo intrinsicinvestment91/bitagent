@@ -43,6 +43,55 @@ async def _ws_publish(url: str, msg: str) -> None:
             await ws.send_str(msg)
             await asyncio.sleep(0.3)  # brief wait for relay ACK
 
+
+async def _ws_query(url: str, req_msg: str, sub_id: str, per_relay_timeout: float = 5.0) -> List[dict]:
+    """
+    Query a single Nostr relay and collect EVENT messages until EOSE or timeout.
+
+    Sends a NIP-01 REQ, accumulates EVENT payloads, stops on EOSE or timeout,
+    then sends CLOSE. Returns a list of raw event dicts. Best-effort: any
+    connection or protocol error returns an empty list.
+    """
+    events: List[dict] = []
+    connect_timeout = aiohttp.ClientTimeout(connect=5, total=per_relay_timeout + 5)
+    try:
+        async with aiohttp.ClientSession(timeout=connect_timeout) as session:
+            async with session.ws_connect(url, ssl=False, heartbeat=None) as ws:
+                await ws.send_str(req_msg)
+                deadline = asyncio.get_event_loop().time() + per_relay_timeout
+                while True:
+                    remaining = deadline - asyncio.get_event_loop().time()
+                    if remaining <= 0:
+                        break
+                    try:
+                        raw = await asyncio.wait_for(ws.receive_str(), timeout=remaining)
+                    except asyncio.TimeoutError:
+                        break
+                    try:
+                        msg = json.loads(raw)
+                    except json.JSONDecodeError:
+                        logger.debug("Nostr query: malformed message from %s: %.120s", url, raw)
+                        continue
+                    if not isinstance(msg, list) or len(msg) < 2:
+                        continue
+                    msg_type = msg[0]
+                    if msg_type == "EVENT" and len(msg) == 3 and msg[1] == sub_id:
+                        event_data = msg[2]
+                        if isinstance(event_data, dict):
+                            events.append(event_data)
+                    elif msg_type == "EOSE" and msg[1] == sub_id:
+                        break
+                    elif msg_type in ("NOTICE", "OK", "AUTH"):
+                        logger.debug("Nostr query: relay notice from %s: %s", url, msg)
+                close_msg = json.dumps(["CLOSE", sub_id])
+                try:
+                    await ws.send_str(close_msg)
+                except Exception:
+                    pass
+    except Exception as e:
+        logger.debug("Nostr query: relay %s unavailable: %s", url, e)
+    return events
+
 class DiscoveryProtocol(Enum):
     NOSTR = "nostr"
     DHT = "dht"
@@ -306,9 +355,48 @@ class EnhancedNostrDiscovery:
             logger.debug("Nostr: %d/%d relay(s) did not acknowledge event", failed, len(self.relays))
 
     async def _query_events(self, filters) -> List[Event]:
-        """Query events from relays (not yet implemented; returns empty list)."""
-        logger.debug("Nostr: relay query not implemented; returning empty")
-        return []
+        """
+        Query all configured relays for events matching `filters`.
+
+        Sends a NIP-01 REQ to each relay concurrently, collects EVENT messages
+        until EOSE or a per-relay timeout, then reconstructs Event objects from
+        the raw dicts. Relay failures are best-effort and logged at debug level.
+        """
+        sub_id = hashlib.sha256(str(time.time()).encode()).hexdigest()[:12]
+
+        # Build the REQ filter payload from the Filters object.
+        # Filters is a UserList; to_json_array() returns a list of filter dicts.
+        try:
+            filter_dicts = filters.to_json_array()
+        except Exception as e:
+            logger.warning("Nostr: could not serialise filters (%s); aborting query", e)
+            return []
+
+        req_msg = json.dumps(["REQ", sub_id] + filter_dicts)
+
+        tasks = [_ws_query(url, req_msg, sub_id) for url in self.relays]
+        per_relay_results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        events: List[Event] = []
+        for result in per_relay_results:
+            if isinstance(result, Exception):
+                continue
+            for raw in result:
+                try:
+                    event = Event(
+                        public_key=raw.get("pubkey", ""),
+                        content=raw.get("content", ""),
+                        created_at=raw.get("created_at", int(time.time())),
+                        kind=raw.get("kind", 30078),
+                        tags=raw.get("tags", []),
+                        signature=raw.get("sig", ""),
+                    )
+                    events.append(event)
+                except Exception as e:
+                    logger.debug("Nostr: skipping malformed event: %s", e)
+
+        logger.debug("Nostr: query returned %d event(s) across %d relay(s)", len(events), len(self.relays))
+        return events
 
 class P2PDiscoveryManager:
     """Main discovery manager coordinating multiple discovery protocols."""
