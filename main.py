@@ -22,6 +22,7 @@ from src.agents.web_fetch_agent import router as fetch_router
 from src.agents.search_agent import router as search_router
 from src.agents.streamfinder.streamfinder import StreamfinderAgent
 from src.agents.identity_agent.store import get_identity_by_handle
+from src.network.registry_router import router as registry_router
 from agent_logic import handle_a2a_request, handle_payment_confirmation
 from agent_wallet import AgentWallet
 
@@ -40,9 +41,9 @@ def _build_base_url() -> str:
 
 async def _broadcast_agents(base_url: str, nostr_private_key: str | None) -> None:
     try:
-        from src.network.p2p_discovery import P2PDiscoveryManager, AgentInfo
+        from src.network.p2p_discovery import get_discovery_manager, AgentInfo
 
-        manager = P2PDiscoveryManager(nostr_private_key)
+        manager = get_discovery_manager(nostr_private_key)
         pubkey = manager.nostr_discovery.public_key.hex()
 
         agents = [
@@ -166,6 +167,7 @@ app.include_router(coordinator_router, prefix="/coordinator", tags=["Coordinator
 app.include_router(oracle_router, prefix="/oracle", tags=["PriceOracleAgent"])
 app.include_router(fetch_router, prefix="/fetch", tags=["WebFetchAgent"])
 app.include_router(search_router, prefix="/search", tags=["SearchAgent"])
+app.include_router(registry_router, prefix="/agents", tags=["AgentRegistry"])
 
 
 @app.get("/health")

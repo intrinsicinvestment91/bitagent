@@ -476,3 +476,19 @@ class P2PDiscoveryManager:
     def set_discovery_protocols(self, protocols: List[DiscoveryProtocol]):
         """Set which discovery protocols to use."""
         self.discovery_protocols = protocols
+
+
+# ---------------------------------------------------------------------------
+# Module-level singleton — one shared manager for the process lifetime.
+# Follows the same lazy pattern as AgentWallet in agent_wallet.py.
+# ---------------------------------------------------------------------------
+
+_manager: Optional["P2PDiscoveryManager"] = None
+
+
+def get_discovery_manager(private_key: Optional[str] = None) -> "P2PDiscoveryManager":
+    """Return the process-wide P2PDiscoveryManager, creating it on first call."""
+    global _manager
+    if _manager is None:
+        _manager = P2PDiscoveryManager(private_key)
+    return _manager
