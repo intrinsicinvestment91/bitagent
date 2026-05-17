@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agents — BitAgent</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0d1117; --surface: #161b22; --border: #30363d;
+      --orange: #f7931a; --text: #e6edf3; --muted: #8b949e;
+      --green: #3fb950; --blue: #58a6ff; --purple: #a371f7;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    }
+    body { background: var(--bg); color: var(--text); font-family: var(--font); line-height: 1.6; }
+    nav {
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      padding: 0 2rem; display: flex; align-items: center; gap: 2rem;
+      height: 56px; position: sticky; top: 0; z-index: 100;
+    }
+    nav .logo { font-weight: 700; font-size: 1.1rem; color: var(--orange); text-decoration: none; }
+    nav a { color: var(--muted); text-decoration: none; font-size: 0.9rem; transition: color 0.15s; }
+    nav a:hover, nav a.active { color: var(--text); }
+    nav .spacer { flex: 1; }
+    nav .badge { background: var(--orange); color: #000; font-size: 0.7rem; font-weight: 700; padding: 2px 8px; border-radius: 99px; text-decoration: none; }
+
+    .page-header { max-width: 860px; margin: 3rem auto 0; padding: 0 2rem 2rem; border-bottom: 1px solid var(--border); }
+    .page-header h1 { font-size: 2rem; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 0.4rem; }
+    .page-header p { color: var(--muted); }
+
+    .content { max-width: 860px; margin: 0 auto; padding: 3rem 2rem; }
+
+    .agent-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 2rem;
+      margin-bottom: 2rem;
+      scroll-margin-top: 72px;
+    }
+    .agent-card:hover { border-color: #444d56; }
+    .agent-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: 1.25rem; flex-wrap: wrap; }
+    .agent-header h2 { font-size: 1.25rem; font-weight: 700; }
+    .agent-header .meta { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
+    .tag {
+      font-size: 0.72rem; font-weight: 600; padding: 2px 10px; border-radius: 99px; border: 1px solid;
+    }
+    .tag-price { border-color: var(--orange); color: var(--orange); background: rgba(247,147,26,0.08); }
+    .tag-path { border-color: var(--border); color: var(--muted); background: transparent; font-family: var(--mono); }
+    .tag-status { border-color: var(--green); color: var(--green); background: rgba(63,185,80,0.08); }
+    .tag-a2a { border-color: var(--purple); color: var(--purple); background: rgba(163,113,247,0.08); }
+
+    .agent-desc { color: var(--muted); font-size: 0.9rem; margin-bottom: 1.25rem; }
+
+    .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.25rem; }
+    @media (max-width: 560px) { .detail-grid { grid-template-columns: 1fr; } }
+    .detail-block h4 { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.8px; color: var(--muted); margin-bottom: 0.4rem; }
+    .detail-block ul { list-style: none; }
+    .detail-block li { font-size: 0.85rem; padding: 2px 0; }
+    .detail-block li::before { content: "· "; color: var(--orange); }
+
+    pre {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 1rem 1.25rem;
+      overflow-x: auto;
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      line-height: 1.65;
+    }
+    .comment { color: var(--muted); }
+    .key { color: var(--blue); }
+    .val { color: var(--green); }
+    .str { color: #a5d6ff; }
+    code { font-family: var(--mono); font-size: 0.84em; color: var(--orange); background: rgba(247,147,26,0.1); padding: 1px 5px; border-radius: 3px; }
+
+    footer { border-top: 1px solid var(--border); padding: 2rem; text-align: center; color: var(--muted); font-size: 0.8rem; }
+    footer a { color: var(--muted); text-decoration: none; }
+    footer a:hover { color: var(--text); }
+  </style>
+</head>
+<body>
+
+<nav>
+  <a class="logo" href="index.html">⚡ BitAgent</a>
+  <a href="index.html">Overview</a>
+  <a href="agents.html" class="active">Agents</a>
+  <a href="architecture.html">Architecture</a>
+  <a href="payments.html">Payments</a>
+  <a href="discovery.html">Discovery</a>
+  <a href="api.html">API</a>
+  <span class="spacer"></span>
+  <a class="badge" href="https://bitagent-production.up.railway.app/docs" target="_blank">Live Docs ↗</a>
+</nav>
+
+<div class="page-header">
+  <h1>Agents</h1>
+  <p>Seven live agents, each autonomous, each accepting Lightning or ecash payments.</p>
+</div>
+
+<div class="content">
+
+  <!-- POLYGLOT -->
+  <div class="agent-card" id="polyglot">
+    <div class="agent-header">
+      <h2>🌐 PolyglotAgent</h2>
+      <div class="meta">
+        <span class="tag tag-status">● live</span>
+        <span class="tag tag-price">100–250 sats</span>
+        <span class="tag tag-path">/polyglot</span>
+      </div>
+    </div>
+    <p class="agent-desc">Translates text between languages and transcribes audio files using OpenAI Whisper. The cheapest and most-used agent in the stack — translation drives the coordinator and MCP tool integrations.</p>
+    <div class="detail-grid">
+      <div class="detail-block">
+        <h4>Services</h4>
+        <ul>
+          <li>translate — 100 sats/request</li>
+          <li>transcribe — 250 sats/request (Whisper, local-only)</li>
+        </ul>
+      </div>
+      <div class="detail-block">
+        <h4>Notes</h4>
+        <ul>
+          <li>Whisper excluded from prod build (avoids PyTorch ~2 GB pull)</li>
+          <li>Translation is live in production</li>
+          <li>Accepts Lightning and Fedimint ecash</li>
+        </ul>
+      </div>
+    </div>
+    <pre><span class="comment"># Translate English → Spanish</span>
+curl -X POST https://bitagent-production.up.railway.app/polyglot/translate \
+  -H "Content-Type: application/json" \
+  -d '{
+    <span class="key">"text"</span>: <span class="str">"Hello, world"</span>,
+    <span class="key">"source_lang"</span>: <span class="str">"en"</span>,
+    <span class="key">"target_lang"</span>: <span class="str">"es"</span>,
+    <span class="key">"payment_hash"</span>: <span class="str">"&lt;paid_hash&gt;"</span>
+  }'</pre>
+  </div>
+
+  <!-- COORDINATOR -->
+  <div class="agent-card" id="coordinator">
+    <div class="agent-header">
+      <h2>🎯 CoordinatorAgent</h2>
+      <div class="meta">
+        <span class="tag tag-status">● live</span>
+        <span class="tag tag-price">350 sats</span>
+        <span class="tag tag-path">/coordinator</span>
+      </div>
+    </div>
+    <p class="agent-desc">Orchestrates multi-step workflows by chaining calls to specialist agents. Accepts a high-level task and returns a combined result — the client pays once; the coordinator handles all downstream agent calls.</p>
+    <div class="detail-grid">
+      <div class="detail-block">
+        <h4>Capabilities</h4>
+        <ul>
+          <li>Sequential agent chaining</li>
+          <li>Result aggregation</li>
+          <li>Internal retry on agent failure</li>
+        </ul>
+      </div>
+      <div class="detail-block">
+        <h4>Typical workflow</h4>
+        <ul>
+          <li>Search → summarise → translate</li>
+          <li>Fetch page → extract → translate</li>
+          <li>Price → convert → format</li>
+        </ul>
+      </div>
+    </div>
+    <pre><span class="comment"># Chain: search + translate in one call</span>
+POST /coordinator/coordinate
+{
+  <span class="key">"task"</span>: <span class="str">"search for bitcoin news and translate to German"</span>,
+  <span class="key">"payment_hash"</span>: <span class="str">"&lt;paid_hash&gt;"</span>
+}</pre>
+  </div>
+
+  <!-- ORACLE -->
+  <div class="agent-card" id="oracle">
+    <div class="agent-header">
+      <h2>📈 PriceOracleAgent</h2>
+      <div class="meta">
+        <span class="tag tag-status">● live</span>
+        <span class="tag tag-price">2 sats</span>
+        <span class="tag tag-path">/oracle</span>
+        <span class="tag tag-a2a">A2A: oracle.*</span>
+      </div>
+    </div>
+    <p class="agent-desc">Returns real-time crypto prices at 2 sats per request — the cheapest paid agent in the stack. CoinGecko is the primary source with Binance as a fallback. Results are cached for 60 seconds to avoid hammering upstream APIs.</p>
+    <div class="detail-grid">
+      <div class="detail-block">
+        <h4>A2A methods</h4>
+        <ul>
+          <li>oracle.price — single asset</li>
+          <li>oracle.prices — multiple assets</li>
+          <li>oracle.convert — cross-asset conversion</li>
+        </ul>
+      </div>
+      <div class="detail-block">
+        <h4>Sources</h4>
+        <ul>
+          <li>Primary: CoinGecko</li>
+          <li>Fallback: Binance ticker</li>
+          <li>Cache TTL: 60 seconds</li>
+        </ul>
+      </div>
+    </div>
+    <pre><span class="comment"># Get BTC price in USD</span>
+POST /a2a
+{
+  <span class="key">"method"</span>: <span class="str">"oracle.price"</span>,
+  <span class="key">"params"</span>: { <span class="key">"asset"</span>: <span class="str">"bitcoin"</span>, <span class="key">"currency"</span>: <span class="str">"usd"</span> }
+}</pre>
+  </div>
+
+  <!-- FETCH -->
+  <div class="agent-card" id="fetch">
+    <div class="agent-header">
+      <h2>🌍 WebFetchAgent</h2>
+      <div class="meta">
+        <span class="tag tag-status">● live</span>
+        <span class="tag tag-price">25 sats</span>
+        <span class="tag tag-path">/fetch</span>
+        <span class="tag tag-a2a">A2A: fetch.url</span>
+      </div>
+    </div>
+    <p class="agent-desc">Fetches web pages and returns their content. Includes SSRF protection that blocks requests to private IP ranges (RFC 1918, loopback, link-local) to prevent internal network access.</p>
+    <div class="detail-grid">
+      <div class="detail-block">
+        <h4>Security</h4>
+        <ul>
+          <li>Blocks 10.x.x.x, 172.16–31.x.x, 192.168.x.x</li>
+          <li>Blocks 127.x.x.x and ::1</li>
+          <li>Blocks 169.254.x.x (link-local)</li>
+        </ul>
+      </div>
+      <div class="detail-block">
+        <h4>A2A method</h4>
+        <ul>
+          <li>fetch.url — returns page text/html</li>
+          <li>Configurable timeout</li>
+          <li>User-agent spoofing supported</li>
+        </ul>
+      </div>
+    </div>
+    <pre><span class="comment"># Fetch a URL</span>
+POST /a2a
+{
+  <span class="key">"method"</span>: <span class="str">"fetch.url"</span>,
+  <span class="key">"params"</span>: { <span class="key">"url"</span>: <span class="str">"https://example.com"</span> }
+}</pre>
+  </div>
+
+  <!-- SEARCH -->
+  <div class="agent-card" id="search">
+    <div class="agent-header">
+      <h2>🔎 SearchAgent</h2>
+      <div class="meta">
+        <span class="tag tag-status">● live</span>
+        <span class="tag tag-price">10 sats</span>
+        <span class="tag tag-path">/search</span>
+        <span class="tag tag-a2a">A2A: search.query</span>
+      </div>
+    </div>
+    <p class="agent-desc">Runs web searches with a three-tier fallback chain. Brave Search is tried first (fastest, privacy-respecting), then SearXNG (self-hosted meta-search), then DuckDuckGo via <code>ddgs</code> as a last resort.</p>
+    <div class="detail-grid">
+      <div class="detail-block">
+        <h4>Fallback chain</h4>
+        <ul>
+          <li>1. Brave Search API</li>
+          <li>2. SearXNG instance</li>
+          <li>3. DuckDuckGo (ddgs library)</li>
+        </ul>
+      </div>
+      <div class="detail-block">
+        <h4>MCP tool</h4>
+        <ul>
+          <li>Exposed as Claude tool via MCP server</li>
+          <li>No HTTP — direct module import</li>
+          <li>Cost reported per call in sats</li>
+        </ul>
+      </div>
+    </div>
+    <pre><span class="comment"># Search the web</span>
+POST /a2a
+{
+  <span class="key">"method"</span>: <span class="str">"search.query"</span>,
+  <span class="key">"params"</span>: { <span class="key">"query"</span>: <span class="str">"lightning network capacity 2025"</span> }
+}</pre>
+  </div>
+
+  <!-- STREAMFINDER -->
+  <div class="agent-card" id="streamfinder">
+    <div class="agent-header">
+      <h2>📡 StreamfinderAgent</h2>
+      <div class="meta">
+        <span class="tag tag-status">● live</span>
+        <span class="tag tag-price">100 sats</span>
+        <span class="tag tag-a2a">A2A only</span>
+      </div>
+    </div>
+    <p class="agent-desc">The reference implementation of the Agent-to-Agent JSON-RPC pattern. Provides a <code>streamfinder.search</code> method that can be optionally gated behind NIP-05 identity verification and trust scoring.</p>
+    <div class="detail-grid">
+      <div class="detail-block">
+        <h4>A2A method</h4>
+        <ul>
+          <li>streamfinder.search — query stream DB</li>
+          <li>Optional identity trust gate</li>
+          <li>Requires requester_pubkey when gate active</li>
+        </ul>
+      </div>
+      <div class="detail-block">
+        <h4>Identity gate (opt-in)</h4>
+        <ul>
+          <li>IDENTITY_REQUIRE_FOR_PAID_SERVICES=true</li>
+          <li>IDENTITY_MIN_TRUST_SCORE=0.25 (default)</li>
+          <li>IDENTITY_FREE_QUERIES=false</li>
+        </ul>
+      </div>
+    </div>
+    <pre><span class="comment"># Search with identity gate enabled</span>
+POST /a2a
+{
+  <span class="key">"method"</span>: <span class="str">"streamfinder.search"</span>,
+  <span class="key">"params"</span>: {
+    <span class="key">"query"</span>: <span class="str">"bitcoin price feed"</span>,
+    <span class="key">"requester_pubkey"</span>: <span class="str">"&lt;nostr_pubkey_hex&gt;"</span>
+  }
+}</pre>
+  </div>
+
+  <!-- IDENTITY -->
+  <div class="agent-card" id="identity">
+    <div class="agent-header">
+      <h2>🪪 IdentityAgent</h2>
+      <div class="meta">
+        <span class="tag tag-status">● live</span>
+        <span class="tag tag-price">10–1000 sats</span>
+        <span class="tag tag-a2a">A2A only</span>
+      </div>
+    </div>
+    <p class="agent-desc">Handles NIP-05 identity registration (<code>name@domain</code> → Nostr pubkey mapping) and maintains a trust score for each registered pubkey. Backing store is SQLite. Exposes the <code>/.well-known/nostr.json</code> endpoint required by the NIP-05 spec.</p>
+    <div class="detail-grid">
+      <div class="detail-block">
+        <h4>A2A methods</h4>
+        <ul>
+          <li>identity.register_nip05</li>
+          <li>identity.get_identity</li>
+          <li>identity.list_verified</li>
+          <li>identity.search</li>
+          <li>identity.get_trust_signal</li>
+        </ul>
+      </div>
+      <div class="detail-block">
+        <h4>Trust scoring</h4>
+        <ul>
+          <li>Score range: 0.0 – 1.0</li>
+          <li>Factors: payment history, age, activity</li>
+          <li>Used as gate for streamfinder.search</li>
+          <li>Deterministic (same pubkey → same signal)</li>
+        </ul>
+      </div>
+    </div>
+    <pre><span class="comment"># Register a NIP-05 handle</span>
+POST /a2a
+{
+  <span class="key">"method"</span>: <span class="str">"identity.register_nip05"</span>,
+  <span class="key">"params"</span>: {
+    <span class="key">"handle"</span>: <span class="str">"alice"</span>,
+    <span class="key">"domain"</span>: <span class="str">"bitagent-production.up.railway.app"</span>,
+    <span class="key">"pubkey"</span>: <span class="str">"&lt;nostr_pubkey_hex&gt;"</span>
+  }
+}</pre>
+  </div>
+
+</div><!-- /content -->
+
+<footer>
+  <p>BitAgent · <a href="https://github.com/intrinsicinvestment91/bitagent" target="_blank">GitHub</a> · <a href="https://bitagent-production.up.railway.app/docs" target="_blank">Live API</a> · MIT License</p>
+</footer>
+
+</body>
+</html>

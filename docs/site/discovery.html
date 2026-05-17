@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Discovery — BitAgent</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0d1117; --surface: #161b22; --border: #30363d;
+      --orange: #f7931a; --text: #e6edf3; --muted: #8b949e;
+      --green: #3fb950; --blue: #58a6ff; --purple: #a371f7;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    }
+    body { background: var(--bg); color: var(--text); font-family: var(--font); line-height: 1.6; }
+    nav {
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      padding: 0 2rem; display: flex; align-items: center; gap: 2rem;
+      height: 56px; position: sticky; top: 0; z-index: 100;
+    }
+    nav .logo { font-weight: 700; font-size: 1.1rem; color: var(--orange); text-decoration: none; }
+    nav a { color: var(--muted); text-decoration: none; font-size: 0.9rem; }
+    nav a:hover, nav a.active { color: var(--text); }
+    nav .spacer { flex: 1; }
+    nav .badge { background: var(--orange); color: #000; font-size: 0.7rem; font-weight: 700; padding: 2px 8px; border-radius: 99px; text-decoration: none; }
+
+    .page-header { max-width: 900px; margin: 3rem auto 0; padding: 0 2rem 2rem; border-bottom: 1px solid var(--border); }
+    .page-header h1 { font-size: 2rem; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 0.4rem; }
+    .page-header p { color: var(--muted); }
+
+    .content { max-width: 900px; margin: 0 auto; padding: 3rem 2rem; }
+    h2 { font-size: 1.35rem; font-weight: 700; letter-spacing: -0.3px; margin: 2.5rem 0 0.4rem; }
+    h2:first-child { margin-top: 0; }
+    p { color: var(--muted); font-size: 0.92rem; margin-bottom: 1rem; }
+    p strong { color: var(--text); }
+
+    .proto-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin: 1.5rem 0; }
+    @media (max-width: 600px) { .proto-grid { grid-template-columns: 1fr; } }
+    .proto-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1.75rem; }
+    .proto-card .badge {
+      display: inline-block; font-size: 0.7rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.8px;
+      padding: 2px 10px; border-radius: 99px; margin-bottom: 1rem;
+    }
+    .proto-card.nostr .badge { background: rgba(163,113,247,0.15); color: var(--purple); border: 1px solid var(--purple); }
+    .proto-card.dht .badge { background: rgba(88,166,255,0.15); color: var(--blue); border: 1px solid var(--blue); }
+    .proto-card h3 { font-size: 1.05rem; font-weight: 700; margin-bottom: 0.4rem; }
+    .proto-card p { font-size: 0.85rem; }
+    .proto-card ul { list-style: none; margin-top: 0.75rem; }
+    .proto-card li { font-size: 0.83rem; color: var(--muted); padding: 2px 0; }
+    .proto-card li::before { content: "· "; color: var(--orange); }
+
+    pre {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: 1rem 1.25rem; overflow-x: auto;
+      font-family: var(--mono); font-size: 0.78rem; line-height: 1.65; margin: 1rem 0;
+    }
+    code { font-family: var(--mono); font-size: 0.84em; color: var(--orange); background: rgba(247,147,26,0.1); padding: 1px 5px; border-radius: 3px; }
+
+    .relay-list { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 1rem 0; }
+    .relay-chip {
+      font-family: var(--mono); font-size: 0.78rem;
+      background: var(--surface); border: 1px solid var(--border);
+      padding: 4px 12px; border-radius: 99px; color: var(--muted);
+    }
+
+    .nip-flow {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: 1.5rem 2rem; font-family: var(--mono);
+      font-size: 0.8rem; line-height: 1.8; overflow-x: auto; margin: 1rem 0;
+    }
+    .nip-send { color: var(--blue); }
+    .nip-recv { color: var(--green); }
+    .nip-comment { color: var(--muted); }
+
+    .identity-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem; margin: 1rem 0; }
+    .did-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.25rem; }
+    .did-card .method { font-family: var(--mono); font-size: 0.8rem; color: var(--purple); margin-bottom: 0.4rem; }
+    .did-card p { font-size: 0.82rem; color: var(--muted); margin: 0; }
+
+    footer { border-top: 1px solid var(--border); padding: 2rem; text-align: center; color: var(--muted); font-size: 0.8rem; }
+    footer a { color: var(--muted); text-decoration: none; }
+  </style>
+</head>
+<body>
+
+<nav>
+  <a class="logo" href="index.html">⚡ BitAgent</a>
+  <a href="index.html">Overview</a>
+  <a href="agents.html">Agents</a>
+  <a href="architecture.html">Architecture</a>
+  <a href="payments.html">Payments</a>
+  <a href="discovery.html" class="active">Discovery</a>
+  <a href="api.html">API</a>
+  <span class="spacer"></span>
+  <a class="badge" href="https://bitagent-production.up.railway.app/docs" target="_blank">Live Docs ↗</a>
+</nav>
+
+<div class="page-header">
+  <h1>Discovery &amp; Identity</h1>
+  <p>How agents find each other — Nostr broadcasting, DHT, NIP-05, and DIDs.</p>
+</div>
+
+<div class="content">
+
+  <h2>Two discovery protocols</h2>
+  <p>Agents are discovered through two complementary protocols running concurrently. Both are best-effort; losing one doesn't break the other.</p>
+
+  <div class="proto-grid">
+    <div class="proto-card nostr">
+      <div class="badge">Nostr</div>
+      <h3>📡 Nostr Kind 30078</h3>
+      <p>On startup, each agent broadcasts a signed Nostr event to all configured relays. Any client subscribed to Kind 30078 with the <code>bitagent</code> tag can discover the agent without a central directory.</p>
+      <ul>
+        <li>Signed with secp256k1 (NIP-01)</li>
+        <li>Persistent or ephemeral keypair</li>
+        <li>5 relays, concurrent publish</li>
+        <li>NIP-05 identity for stable names</li>
+      </ul>
+    </div>
+    <div class="proto-card dht">
+      <div class="badge">DHT</div>
+      <h3>🌐 Distributed Hash Table</h3>
+      <p>A lightweight in-process DHT stores agent records keyed by SHA-256 of the agent ID. Peer nodes can replicate entries and query each other directly over HTTP.</p>
+      <ul>
+        <li>SHA-256 keyed registry</li>
+        <li>TTL-based expiry (default 3600s)</li>
+        <li>Peer replication via POST /dht/store</li>
+        <li>Fallback when Nostr unavailable</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>Nostr identity — persistent vs ephemeral</h2>
+  <p>Set <code>NOSTR_PRIVATE_KEY</code> to maintain a stable identity across restarts. Without it, a fresh keypair is generated each time — useful for dev but means the agent accumulates no Nostr history.</p>
+  <pre><span style="color:#8b949e"># Generate a persistent key</span>
+python -c "from nostr.key import PrivateKey; print(PrivateKey().raw_secret.hex())"
+
+<span style="color:#8b949e"># Set in .env</span>
+NOSTR_PRIVATE_KEY=64_char_lowercase_hex_secp256k1_key</pre>
+
+  <p>On startup the server logs which mode is active:</p>
+  <pre><span style="color:#3fb950">INFO</span>  Nostr: persistent identity loaded (pubkey a1b2c3d4...)
+<span style="color:#f7931a">INFO</span>  Nostr: NOSTR_PRIVATE_KEY not set — ephemeral identity active (pubkey 9f8e7d6c...)</pre>
+
+  <p>If the key is present but malformed (wrong length, non-hex), a <code>WARNING</code> is logged and the agent falls back to ephemeral.</p>
+
+  <h2>Relay publishing — NIP-01 WebSocket flow</h2>
+  <p>Publishing uses a bare <code>aiohttp</code> WebSocket client — no external relay manager library. <strong>python-nostr's <code>RelayManager</code> is not used</strong> because it fails to import under Python 3.13 due to a mutable dataclass default in <code>nostr.relay</code>.</p>
+
+  <div class="nip-flow">
+<span class="nip-comment">Client                          Relay</span>
+  <span class="nip-send">──  ws://relay.damus.io  ──────────────────&gt;</span>
+  <span class="nip-send">──  ["EVENT", { id, pubkey, kind: 30078, </span>
+  <span class="nip-send">       tags: [["t","bitagent"],[...]], </span>
+  <span class="nip-send">       content: "{agent_id, endpoint, ...}",</span>
+  <span class="nip-send">       sig }]  ─────────────────────────────&gt;</span>
+  <span class="nip-recv">                       &lt;────  ["OK", id, true, ""]</span></div>
+
+  <p>All 5 relays are queried concurrently via <code>asyncio.gather</code>. Failures are logged at DEBUG and do not block startup.</p>
+
+  <div class="relay-list">
+    <span class="relay-chip">wss://relay.damus.io</span>
+    <span class="relay-chip">wss://relay.snort.social</span>
+    <span class="relay-chip">wss://nos.lol</span>
+    <span class="relay-chip">wss://nostr.wine</span>
+    <span class="relay-chip">wss://relay.nostr.band</span>
+  </div>
+
+  <h2>Relay querying — REQ / EOSE</h2>
+  <p>The <code>_ws_query</code> helper sends a NIP-01 <code>REQ</code> message and collects <code>EVENT</code> responses until the relay signals end-of-stored-events (<code>EOSE</code>) or a 5-second timeout expires.</p>
+
+  <div class="nip-flow">
+<span class="nip-send">──  ["REQ", "sub_abc123", </span>
+<span class="nip-send">      {"kinds":[30078], "since":1747000000,</span>
+<span class="nip-send">       "#t":["bitagent","agent-discovery"]}]  ──&gt;</span>
+
+<span class="nip-recv">    &lt;──  ["EVENT", "sub_abc123", { ...agent event... }]</span>
+<span class="nip-recv">    &lt;──  ["EVENT", "sub_abc123", { ...agent event... }]</span>
+<span class="nip-recv">    &lt;──  ["EOSE",  "sub_abc123"]</span>
+
+<span class="nip-send">──  ["CLOSE", "sub_abc123"]  ───────────────────────&gt;</span></div>
+
+  <h2>Agent registry endpoint</h2>
+  <p>Locally known agents are exposed over HTTP so clients don't need to subscribe to Nostr directly. See the <a href="api.html#registry" style="color: var(--orange);">API reference</a> for full details.</p>
+  <pre><span style="color:#8b949e"># List all known agents</span>
+GET /agents/registry
+
+<span style="color:#8b949e"># Filter by service capability</span>
+GET /agents/registry?service=search.query
+
+<span style="color:#8b949e"># Paginate</span>
+GET /agents/registry?limit=10&amp;offset=20</pre>
+
+  <h2>Decentralised Identity (DID)</h2>
+  <p>BitAgent supports four DID methods for agent identity documents. DIDs provide a cryptographically verifiable identifier that doesn't depend on a central registrar.</p>
+
+  <div class="identity-grid">
+    <div class="did-card">
+      <div class="method">did:key</div>
+      <p>Self-contained. The public key is encoded directly in the DID string. No external resolution needed.</p>
+    </div>
+    <div class="did-card">
+      <div class="method">did:web</div>
+      <p>Resolves to a JSON document at <code>https://domain/.well-known/did.json</code>. Ties identity to a domain.</p>
+    </div>
+    <div class="did-card">
+      <div class="method">did:bitcoin</div>
+      <p>Anchored to the Bitcoin blockchain. Suitable for agents that need on-chain provenance.</p>
+    </div>
+    <div class="did-card">
+      <div class="method">did:nostr</div>
+      <p>Resolves via Nostr pubkey. Natural fit for agents already using Nostr for discovery.</p>
+    </div>
+  </div>
+
+  <h2>NIP-05 identity</h2>
+  <p>The <strong>IdentityAgent</strong> registers human-readable Nostr identifiers of the form <code>name@domain</code>. Registration costs 10–1000 sats and creates a record in SQLite. The <code>/.well-known/nostr.json</code> endpoint then resolves the name to a pubkey — which is what NIP-05-compatible Nostr clients use to verify identity.</p>
+  <pre><span style="color:#8b949e"># Resolve alice@bitagent-production.up.railway.app</span>
+GET /.well-known/nostr.json?name=alice
+
+{
+  "names": { "alice": "npub_hex..." },
+  "relays": { "npub_hex...": ["wss://relay.damus.io"] }
+}</pre>
+
+  <h2>Trust scoring</h2>
+  <p>Each registered pubkey accumulates a trust score in <code>[0.0, 1.0]</code>. The score is deterministic and factors in payment history, account age, and activity. It's used as a gate for <code>streamfinder.search</code> when <code>IDENTITY_REQUIRE_FOR_PAID_SERVICES=true</code>.</p>
+  <pre><span style="color:#8b949e"># Get trust signal for a pubkey</span>
+POST /a2a
+{
+  "method": "identity.get_trust_signal",
+  "params": { "pubkey": "&lt;npub_hex&gt;" }
+}
+
+<span style="color:#3fb950">200</span>
+{ "trust_score": 0.72, "warning": null }</pre>
+
+</div>
+
+<footer>
+  <p>BitAgent · <a href="https://github.com/intrinsicinvestment91/bitagent" target="_blank">GitHub</a> · <a href="https://bitagent-production.up.railway.app/docs" target="_blank">Live API</a> · MIT License</p>
+</footer>
+
+</body>
+</html>

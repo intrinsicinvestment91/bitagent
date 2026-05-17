@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BitAgent — Lightning-Enabled AI Agents</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0d1117;
+      --surface:  #161b22;
+      --border:   #30363d;
+      --orange:   #f7931a;
+      --orange-d: #d4781a;
+      --text:     #e6edf3;
+      --muted:    #8b949e;
+      --green:    #3fb950;
+      --purple:   #a371f7;
+      --blue:     #58a6ff;
+      --font:     -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      --mono:     "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    }
+
+    body { background: var(--bg); color: var(--text); font-family: var(--font); line-height: 1.6; }
+
+    /* NAV */
+    nav {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 2rem;
+      display: flex;
+      align-items: center;
+      gap: 2rem;
+      height: 56px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    nav .logo { font-weight: 700; font-size: 1.1rem; color: var(--orange); text-decoration: none; letter-spacing: -0.3px; }
+    nav a { color: var(--muted); text-decoration: none; font-size: 0.9rem; transition: color 0.15s; }
+    nav a:hover, nav a.active { color: var(--text); }
+    nav .spacer { flex: 1; }
+    nav .badge {
+      background: var(--orange);
+      color: #000;
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 99px;
+      text-decoration: none;
+    }
+
+    /* HERO */
+    .hero {
+      max-width: 860px;
+      margin: 6rem auto 4rem;
+      padding: 0 2rem;
+      text-align: center;
+    }
+    .hero .tag {
+      display: inline-block;
+      border: 1px solid var(--orange);
+      color: var(--orange);
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 3px 12px;
+      border-radius: 99px;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      margin-bottom: 1.5rem;
+    }
+    .hero h1 { font-size: clamp(2rem, 5vw, 3.2rem); font-weight: 700; letter-spacing: -1px; line-height: 1.15; margin-bottom: 1.2rem; }
+    .hero h1 span { color: var(--orange); }
+    .hero p { font-size: 1.15rem; color: var(--muted); max-width: 600px; margin: 0 auto 2.5rem; }
+    .hero-cta { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
+    .btn {
+      display: inline-block;
+      padding: 0.65rem 1.5rem;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      text-decoration: none;
+      transition: opacity 0.15s;
+    }
+    .btn:hover { opacity: 0.85; }
+    .btn-primary { background: var(--orange); color: #000; }
+    .btn-secondary { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
+
+    /* STATS */
+    .stats {
+      display: flex;
+      justify-content: center;
+      gap: 3rem;
+      flex-wrap: wrap;
+      padding: 2.5rem 2rem;
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+    .stat { text-align: center; }
+    .stat .num { font-size: 1.9rem; font-weight: 700; color: var(--orange); }
+    .stat .label { font-size: 0.8rem; color: var(--muted); margin-top: 2px; }
+
+    /* SECTIONS */
+    section { max-width: 1000px; margin: 0 auto; padding: 4rem 2rem; }
+    section h2 { font-size: 1.6rem; font-weight: 700; letter-spacing: -0.4px; margin-bottom: 0.5rem; }
+    section .sub { color: var(--muted); margin-bottom: 2rem; font-size: 0.95rem; }
+
+    /* FEATURE GRID */
+    .feature-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; }
+    .feature-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.5rem;
+      transition: border-color 0.2s;
+    }
+    .feature-card:hover { border-color: var(--orange); }
+    .feature-card .icon { font-size: 1.5rem; margin-bottom: 0.75rem; }
+    .feature-card h3 { font-size: 1rem; font-weight: 600; margin-bottom: 0.4rem; }
+    .feature-card p { font-size: 0.875rem; color: var(--muted); }
+
+    /* AGENT PREVIEW */
+    .agent-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1rem 1.25rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin-bottom: 0.5rem;
+      text-decoration: none;
+      color: var(--text);
+      transition: border-color 0.15s;
+    }
+    .agent-row:hover { border-color: var(--orange); }
+    .agent-row .name { font-weight: 600; font-size: 0.95rem; }
+    .agent-row .desc { font-size: 0.82rem; color: var(--muted); margin-top: 2px; }
+    .agent-row .price {
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      color: var(--orange);
+      background: rgba(247,147,26,0.1);
+      padding: 3px 10px;
+      border-radius: 99px;
+      white-space: nowrap;
+    }
+
+    /* CODE */
+    pre {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.25rem 1.5rem;
+      overflow-x: auto;
+      font-family: var(--mono);
+      font-size: 0.82rem;
+      line-height: 1.6;
+    }
+    code { font-family: var(--mono); font-size: 0.85em; color: var(--orange); background: rgba(247,147,26,0.1); padding: 1px 5px; border-radius: 3px; }
+
+    /* FLOW DIAGRAM */
+    .flow {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      flex-wrap: wrap;
+      margin: 1.5rem 0;
+    }
+    .flow-step {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.6rem 1rem;
+      font-size: 0.82rem;
+      font-weight: 500;
+    }
+    .flow-arrow { color: var(--muted); padding: 0 0.5rem; font-size: 1rem; }
+
+    /* FOOTER */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 2rem;
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.8rem;
+    }
+    footer a { color: var(--muted); text-decoration: none; }
+    footer a:hover { color: var(--text); }
+  </style>
+</head>
+<body>
+
+<nav>
+  <a class="logo" href="index.html">⚡ BitAgent</a>
+  <a href="index.html" class="active">Overview</a>
+  <a href="agents.html">Agents</a>
+  <a href="architecture.html">Architecture</a>
+  <a href="payments.html">Payments</a>
+  <a href="discovery.html">Discovery</a>
+  <a href="api.html">API</a>
+  <span class="spacer"></span>
+  <a class="badge" href="https://bitagent-production.up.railway.app/docs" target="_blank">Live Docs ↗</a>
+</nav>
+
+<div class="hero">
+  <div class="tag">Open Source · Bitcoin Native</div>
+  <h1>AI agents that <span>earn and spend</span><br>Bitcoin automatically</h1>
+  <p>BitAgent is a modular framework for autonomous AI agents that offer services, accept Lightning payments, discover each other over Nostr, and verify identity with DIDs.</p>
+  <div class="hero-cta">
+    <a href="agents.html" class="btn btn-primary">Explore Agents</a>
+    <a href="architecture.html" class="btn btn-secondary">How It Works</a>
+  </div>
+</div>
+
+<div class="stats">
+  <div class="stat"><div class="num">7</div><div class="label">Live Agents</div></div>
+  <div class="stat"><div class="num">2 sats</div><div class="label">Lowest price</div></div>
+  <div class="stat"><div class="num">2</div><div class="label">Payment paths (Lightning + ecash)</div></div>
+  <div class="stat"><div class="num">5</div><div class="label">Nostr relays</div></div>
+  <div class="stat"><div class="num">4</div><div class="label">DID methods</div></div>
+</div>
+
+<section>
+  <h2>What is BitAgent?</h2>
+  <p class="sub">A framework for building autonomous AI agents with native Bitcoin payments.</p>
+  <div class="feature-grid">
+    <div class="feature-card">
+      <div class="icon">⚡</div>
+      <h3>Lightning Payments</h3>
+      <p>Every agent issues Lightning invoices and verifies payment before serving requests. No accounts, no API keys — pay per use.</p>
+    </div>
+    <div class="feature-card">
+      <div class="icon">🔍</div>
+      <h3>Nostr Discovery</h3>
+      <p>Agents broadcast their capabilities as Nostr Kind 30078 events. Any client or agent can discover services without a central registry.</p>
+    </div>
+    <div class="feature-card">
+      <div class="icon">🪪</div>
+      <h3>Decentralised Identity</h3>
+      <p>Agents verify identity using DIDs (did:key, did:web, did:bitcoin, did:nostr) and NIP-05 handles with trust scoring.</p>
+    </div>
+    <div class="feature-card">
+      <div class="icon">🤖</div>
+      <h3>Agent-to-Agent (A2A)</h3>
+      <p>Agents call each other over a JSON-RPC protocol. A coordinator agent chains multiple specialists into multi-step workflows.</p>
+    </div>
+    <div class="feature-card">
+      <div class="icon">🛠️</div>
+      <h3>Claude MCP Integration</h3>
+      <p>Exposed as Claude tools via MCP stdio server. Claude can search the web, get prices, fetch URLs, and translate — all paid in sats.</p>
+    </div>
+    <div class="feature-card">
+      <div class="icon">🌿</div>
+      <h3>Fedimint Ecash</h3>
+      <p>A second payment path alongside Lightning. Agents accept ecash notes, validate them non-destructively, then reissue into the federation wallet.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Request lifecycle</h2>
+  <p class="sub">Every paid endpoint follows the same 402 → pay → resubmit flow.</p>
+  <div class="flow">
+    <div class="flow-step">Client sends request</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step">No payment_hash?<br>Return 402 + invoice</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step">Client pays invoice</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step">Resubmit with payment_hash</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step">Agent verifies + serves</div>
+  </div>
+  <pre>
+<span style="color:#8b949e"># 1. First request → 402</span>
+POST /search
+{}
+
+HTTP 402
+{ "invoice": "lnbc100n1p...", "amount_sats": 10 }
+
+<span style="color:#8b949e"># 2. Pay invoice, then resubmit</span>
+POST /search
+{ "query": "bitcoin price", "payment_hash": "1b741d85..." }
+
+HTTP 200
+{ "results": [...], "cost_sats": 10 }</pre>
+</section>
+
+<section>
+  <h2>Live agents</h2>
+  <p class="sub">All agents are running on Railway at <code>bitagent-production.up.railway.app</code>.</p>
+
+  <a href="agents.html#polyglot" class="agent-row">
+    <div><div class="name">PolyglotAgent</div><div class="desc">Translation and audio transcription</div></div>
+    <div class="price">100–250 sats</div>
+  </a>
+  <a href="agents.html#coordinator" class="agent-row">
+    <div><div class="name">CoordinatorAgent</div><div class="desc">Multi-agent workflow orchestration</div></div>
+    <div class="price">350 sats</div>
+  </a>
+  <a href="agents.html#oracle" class="agent-row">
+    <div><div class="name">PriceOracleAgent</div><div class="desc">Crypto prices via CoinGecko / Binance</div></div>
+    <div class="price">2 sats</div>
+  </a>
+  <a href="agents.html#fetch" class="agent-row">
+    <div><div class="name">WebFetchAgent</div><div class="desc">Fetch web content with SSRF protection</div></div>
+    <div class="price">25 sats</div>
+  </a>
+  <a href="agents.html#search" class="agent-row">
+    <div><div class="name">SearchAgent</div><div class="desc">Web search: Brave → SearXNG → DuckDuckGo</div></div>
+    <div class="price">10 sats</div>
+  </a>
+  <a href="agents.html#streamfinder" class="agent-row">
+    <div><div class="name">StreamfinderAgent</div><div class="desc">A2A JSON-RPC reference implementation</div></div>
+    <div class="price">100 sats</div>
+  </a>
+  <a href="agents.html#identity" class="agent-row">
+    <div><div class="name">IdentityAgent</div><div class="desc">NIP-05 registration and trust scoring</div></div>
+    <div class="price">10–1000 sats</div>
+  </a>
+</section>
+
+<footer>
+  <p>BitAgent · <a href="https://github.com/intrinsicinvestment91/bitagent" target="_blank">GitHub</a> · <a href="https://bitagent-production.up.railway.app/docs" target="_blank">Live API</a> · MIT License</p>
+</footer>
+
+</body>
+</html>
