@@ -27,6 +27,12 @@ python main.py
 
 Look at `src/agents/streamfinder/` as the reference A2A implementation and `src/agents/polyglot_agent/` for a service agent with payment gating.
 
+## Credentials
+
+- LNbits credentials are supplied through untracked local configuration (`.env`) — never commit them
+- Do not use realistic provider credentials as test fixtures; use an obvious placeholder such as `replace-with-local-demo-key`
+- The obsolete public-demo LNbits scripts have been removed; `tests/security/test_no_tracked_credentials.py` guards against reintroduction
+
 ## Pull requests
 
 - Keep PRs focused — one feature or fix per PR

@@ -51,8 +51,8 @@ pytest tests/agents/         # CameraFeedBot, DataBot unit tests
 pytest tests/integration/    # full agent workflow (registration, DID, discovery)
 pytest tests/security/       # encryption, auth, audit logging
 
-# Single test:
-pytest tests/test_agent_wallet.py::TestAgentWallet::test_create_invoice -v
+# Single test file:
+pytest tests/test_did_identity.py -v
 ```
 
 No conftest.py / pytest fixtures — tests use `setup_method()` and inline `unittest.mock`.
