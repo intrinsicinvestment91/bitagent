@@ -17,6 +17,11 @@ import pytest
 # not explicitly disabled.
 os.environ.setdefault("PAYMENTS_ENABLED", "false")
 
+# Rate limiting is per-process and keyed by client address, so every test shares
+# one bucket and later tests would be throttled by earlier ones. It has its own
+# dedicated tests; keep it off everywhere else.
+os.environ.setdefault("RATE_LIMIT", "false")
+
 from src.payments.config import PaymentConfig  # noqa: E402
 from src.payments.gate import PaymentGate, configure_gate, reset_gate  # noqa: E402
 from src.payments.ledger import PaymentLedger  # noqa: E402

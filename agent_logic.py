@@ -24,6 +24,8 @@ METHOD_SERVICES = {
     "oracle.convert": "oracle.convert",
     "fetch.url": "fetch.url",
     "search.query": "search.query",
+    "polyglot.translate": "polyglot.translate",
+    "polyglot.transcribe": "polyglot.transcribe",
     "identity.register_nip05": "identity.register_nip05",
     "identity.get_identity": "identity.get_identity",
     "identity.list_verified": "identity.list_verified",
@@ -112,6 +114,18 @@ async def dispatch_service(method: str, params: dict) -> dict:
 
         return await SearchAgent().search(params["query"], params.get("num_results", 10))
 
+    if method.startswith("polyglot."):
+        from src.agents.polyglot_agent.polyglot_agent import PolyglotAgent
+
+        polyglot = PolyglotAgent()
+        if method == "polyglot.translate":
+            return await polyglot.handle_translation(
+                sanitize_input(params["text"]),
+                params.get("source_lang", "auto"),
+                params.get("target_lang", "en"),
+            )
+        return await polyglot.handle_transcription(audio_data=params.get("audio_data"))
+
     if method.startswith("identity."):
         from src.agents.identity_agent import IdentityAgent
 
@@ -135,6 +149,10 @@ def _validate_params(method: str, params: dict) -> str | None:
         return "Missing 'url'"
     if method == "search.query" and not params.get("query"):
         return "Missing 'query'"
+    if method == "polyglot.translate" and not params.get("text"):
+        return "Missing 'text'"
+    if method == "polyglot.transcribe" and not params.get("audio_data"):
+        return "Missing 'audio_data'"
     if method == "streamfinder.search" and not params.get("query"):
         return "Missing 'query' parameter"
     if method in {"identity.get_identity", "identity.get_trust_signal"} and not params.get(

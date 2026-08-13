@@ -43,6 +43,16 @@ class Quote:
     status_code: int
     body: dict = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        # Every 402 body carries this flag, whether it is a fresh invoice or a
+        # rejection such as already_consumed. Callers that cannot express an HTTP
+        # status — the A2A JSON-RPC envelope, for one — rely on it to tell a
+        # payment problem apart from a service result.
+        if self.status_code == 402:
+            self.body.setdefault("payment_required", True)
+        elif self.status_code == 503:
+            self.body.setdefault("service_unavailable", True)
+
 
 PaymentOutcome = Settled | Quote
 

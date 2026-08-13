@@ -1,10 +1,19 @@
-import asyncio
+"""Optional identity trust gate on streamfinder.search.
+
+When IDENTITY_REQUIRE_FOR_PAID_SERVICES is on, callers must present a
+``requester_pubkey`` whose trust score clears IDENTITY_MIN_TRUST_SCORE.
+"""
+
 from unittest.mock import patch
+
+import pytest
 
 import agent_logic
 
+TRUSTED = {"IDENTITY_REQUIRE_FOR_PAID_SERVICES": "true", "IDENTITY_MIN_TRUST_SCORE": "0.25"}
 
-class _MockIdentityAgentUnknown:
+
+class _UnknownRequester:
     async def get_identity(self, pubkey: str):
         return {"error": "Identity not found"}
 
@@ -12,90 +21,75 @@ class _MockIdentityAgentUnknown:
         return {"pubkey": pubkey, "trust_score": 0.0}
 
 
-class _MockIdentityAgentTrusted:
+class _TrustedRequester:
     async def get_identity(self, pubkey: str):
-        return {
-            "pubkey": pubkey,
-            "handle": "alice",
-            "nip05": "alice@example.com",
-            "verified": True,
-            "category": "dev",
-            "tags": ["nostr"],
-            "trust_score": 0.9,
-        }
+        return {"pubkey": pubkey, "handle": "alice", "verified": True, "trust_score": 0.9}
 
     async def get_trust_signal(self, pubkey: str):
-        return {
-            "pubkey": pubkey,
-            "trusted": True,
-            "trust_score": 0.9,
-            "basis": ["paid_nip05", "active_registration"],
-            "warning": "Trust score is heuristic and not KYC.",
-        }
+        return {"pubkey": pubkey, "trusted": True, "trust_score": 0.9, "basis": ["paid_nip05"]}
 
 
-class _MockWallet:
-    def create_invoice(self, amount: int, memo: str = ""):
-        return {"payment_hash": "hash_streamfinder", "bolt11": "ln_invoice_hash_streamfinder"}
+class _UntrustedRequester:
+    async def get_identity(self, pubkey: str):
+        return {"pubkey": pubkey, "handle": "mallory", "verified": False, "trust_score": 0.1}
 
-    def check_invoice(self, checking_id: str) -> bool:
-        return False
-
-
-def _run(coro):
-    return asyncio.run(coro)
+    async def get_trust_signal(self, pubkey: str):
+        return {"pubkey": pubkey, "trusted": False, "trust_score": 0.1, "basis": []}
 
 
-def test_trust_checks_disabled_by_default():
-    with patch.dict("os.environ", {}, clear=False):
-        result = _run(
-            agent_logic.handle_a2a_request(
-                "streamfinder.search",
-                {"query": "Matrix"},
-            )
+@pytest.fixture
+def free_streamfinder(free_gate):
+    """streamfinder is a synthetic demo, so it settles without payment."""
+    return free_gate
+
+
+async def test_trust_checks_are_off_by_default(free_streamfinder):
+    result = await agent_logic.handle_a2a_request("streamfinder.search", {"query": "Matrix"})
+
+    assert result["found"] is True
+    assert result["synthetic"] is True
+
+
+async def test_enabled_rejects_a_request_with_no_requester(free_streamfinder):
+    with patch.dict("os.environ", TRUSTED, clear=False):
+        result = await agent_logic.handle_a2a_request(
+            "streamfinder.search", {"query": "Matrix"}
         )
-    # With checks off, request continues to normal flow (invoice or search result).
-    assert "error" not in result or "Missing 'query' parameter" not in str(result.get("error", ""))
+
+    assert "requester_pubkey" in result["error"]
 
 
-def test_enabled_rejects_unknown_requester():
+async def test_enabled_rejects_an_unknown_requester(free_streamfinder):
     with (
-        patch("src.agents.identity_agent.IdentityAgent", return_value=_MockIdentityAgentUnknown()),
-        patch.dict(
-            "os.environ",
-            {"IDENTITY_REQUIRE_FOR_PAID_SERVICES": "true", "IDENTITY_MIN_TRUST_SCORE": "0.25"},
-            clear=False,
-        ),
+        patch("src.agents.identity_agent.IdentityAgent", return_value=_UnknownRequester()),
+        patch.dict("os.environ", TRUSTED, clear=False),
     ):
-        result = _run(
-            agent_logic.handle_a2a_request(
-                "streamfinder.search",
-                {"query": "Matrix", "requester_pubkey": "unknown_pubkey"},
-            )
+        result = await agent_logic.handle_a2a_request(
+            "streamfinder.search", {"query": "Matrix", "requester_pubkey": "a" * 64}
         )
+
     assert result == {"error": "Requester identity not found"}
 
 
-def test_enabled_allows_trusted_requester_to_continue():
-    original_wallet = agent_logic._wallet
-    try:
-        agent_logic._wallet = _MockWallet()
-        with (
-            patch("src.agents.identity_agent.IdentityAgent", return_value=_MockIdentityAgentTrusted()),
-            patch.dict(
-                "os.environ",
-                {"IDENTITY_REQUIRE_FOR_PAID_SERVICES": "true", "IDENTITY_MIN_TRUST_SCORE": "0.25"},
-                clear=False,
-            ),
-        ):
-            result = _run(
-                agent_logic.handle_a2a_request(
-                    "streamfinder.search",
-                    {"query": "Matrix", "requester_pubkey": "trusted_pubkey"},
-                )
-            )
-    finally:
-        agent_logic._wallet = original_wallet
+async def test_enabled_rejects_a_requester_below_the_threshold(free_streamfinder):
+    with (
+        patch("src.agents.identity_agent.IdentityAgent", return_value=_UntrustedRequester()),
+        patch.dict("os.environ", TRUSTED, clear=False),
+    ):
+        result = await agent_logic.handle_a2a_request(
+            "streamfinder.search", {"query": "Matrix", "requester_pubkey": "b" * 64}
+        )
 
-    # Trusted requester should reach normal payment/service flow.
-    assert "payment_required" in result or "results" in result
+    assert "below minimum" in result["error"]
+
+
+async def test_enabled_allows_a_trusted_requester_through(free_streamfinder):
+    with (
+        patch("src.agents.identity_agent.IdentityAgent", return_value=_TrustedRequester()),
+        patch.dict("os.environ", TRUSTED, clear=False),
+    ):
+        result = await agent_logic.handle_a2a_request(
+            "streamfinder.search", {"query": "Matrix", "requester_pubkey": "c" * 64}
+        )
+
+    assert result["found"] is True

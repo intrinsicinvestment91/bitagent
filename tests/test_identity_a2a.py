@@ -1,175 +1,131 @@
-from pathlib import Path
-from tempfile import TemporaryDirectory
+"""End-to-end identity flows over the /a2a JSON-RPC endpoint.
+
+These drive the real FastAPI app, the real payment gate and the real ledger, with
+only LNbits faked — so they also cover the JSON-RPC envelope, which used to
+answer every request with HTTP 200 and an error buried inside ``result``.
+"""
+
 from unittest.mock import patch
 
+import pytest
 from fastapi.testclient import TestClient
 
 import main
-import agent_logic
 from src.agents.identity_agent import store
+from src.payments import configure_gate
 from src.agents.identity_agent.store import upsert_identity_metadata
 
-
-class _MockWallet:
-    def __init__(self):
-        self._created = 0
-        self._paid: set[str] = set()
-
-    def create_invoice(self, amount: int, memo: str = "") -> dict:
-        self._created += 1
-        payment_hash = f"hash_{self._created}"
-        return {"payment_hash": payment_hash, "bolt11": f"ln_invoice_{payment_hash}"}
-
-    def check_invoice(self, checking_id: str) -> bool:
-        return checking_id in self._paid
-
-    def mark_paid(self, checking_id: str) -> None:
-        self._paid.add(checking_id)
+PUBKEY = "a" * 64
+JSONRPC_PAYMENT_REQUIRED = -32000
+JSONRPC_METHOD_NOT_FOUND = -32601
+JSONRPC_PARSE_ERROR = -32700
 
 
-def test_a2a_identity_methods_and_register_payment_flow():
-    wallet = _MockWallet()
-    with TemporaryDirectory() as temp_dir:
-        db_path = Path(temp_dir) / "identity_agent.db"
-        original_db_path = store.DB_PATH
-        store.DB_PATH = db_path
-        try:
-            agent_logic._wallet = None
-            with (
-                patch("src.agents.identity_agent.identity_agent.AgentWallet", return_value=wallet),
-                patch("agent_wallet.AgentWallet", return_value=wallet),
-                patch.dict("os.environ", {"IDENTITY_FREE_QUERIES": "true"}, clear=False),
-            ):
-                client = TestClient(main.app)
-
-                unpaid = client.post(
-                    "/a2a",
-                    json={
-                        "jsonrpc": "2.0",
-                        "id": 1,
-                        "method": "identity.register_nip05",
-                        "params": {
-                            "pubkey": "pubkey_a2a",
-                            "handle": "alice",
-                            "domain": "example.com",
-                            "relays": ["wss://relay.damus.io"],
-                        },
-                    },
-                )
-                unpaid_body = unpaid.json()
-                assert unpaid.status_code == 200
-                assert unpaid_body["result"]["payment_required"] is True
-                assert unpaid_body["result"]["amount_sats"] == 1000
-                assert "payment_request" in unpaid_body["result"]
-
-                payment_hash = unpaid_body["result"]["payment_hash"]
-                wallet.mark_paid(payment_hash)
-
-                paid = client.post(
-                    "/a2a",
-                    json={
-                        "jsonrpc": "2.0",
-                        "id": 2,
-                        "method": "identity.register_nip05",
-                        "params": {
-                            "pubkey": "pubkey_a2a",
-                            "handle": "alice",
-                            "domain": "example.com",
-                            "relays": ["wss://relay.damus.io"],
-                            "payment_hash": payment_hash,
-                        },
-                    },
-                )
-                paid_body = paid.json()
-                assert paid.status_code == 200
-                assert paid_body["result"]["status"] == "verified"
-
-                upsert_identity_metadata(
-                    pubkey="pubkey_a2a",
-                    category="dev",
-                    tags=["nostr", "lightning", "agent"],
-                    trust_score=0.75,
-                    db_path=db_path,
-                )
-
-                get_identity = client.post(
-                    "/a2a",
-                    json={
-                        "jsonrpc": "2.0",
-                        "id": 3,
-                        "method": "identity.get_identity",
-                        "params": {"pubkey": "pubkey_a2a"},
-                    },
-                )
-                assert get_identity.status_code == 200
-                assert get_identity.json()["result"]["pubkey"] == "pubkey_a2a"
-
-                list_verified = client.post(
-                    "/a2a",
-                    json={
-                        "jsonrpc": "2.0",
-                        "id": 4,
-                        "method": "identity.list_verified",
-                        "params": {},
-                    },
-                )
-                assert list_verified.status_code == 200
-                assert list_verified.json()["result"]["count"] >= 1
-
-                search = client.post(
-                    "/a2a",
-                    json={
-                        "jsonrpc": "2.0",
-                        "id": 5,
-                        "method": "identity.search",
-                        "params": {"query": "alice"},
-                    },
-                )
-                assert search.status_code == 200
-                assert search.json()["result"]["count"] >= 1
-
-                trust = client.post(
-                    "/a2a",
-                    json={
-                        "jsonrpc": "2.0",
-                        "id": 6,
-                        "method": "identity.get_trust_signal",
-                        "params": {"pubkey": "pubkey_a2a"},
-                    },
-                )
-                assert trust.status_code == 200
-                assert "warning" in trust.json()["result"]
-        finally:
-            store.DB_PATH = original_db_path
+@pytest.fixture
+def client(tmp_path, paid_gate, monkeypatch):
+    monkeypatch.setattr(store, "DB_PATH", tmp_path / "identity_agent.db")
+    with TestClient(main.app) as test_client:
+        # The app's lifespan configures its own gate from the environment, which
+        # would replace the test fixture's. Re-install it once startup is done so
+        # these run against the fake LNbits with payments enforced.
+        configure_gate(paid_gate)
+        yield test_client
 
 
-def test_a2a_identity_query_requires_payment_when_free_mode_disabled():
-    wallet = _MockWallet()
-    with TemporaryDirectory() as temp_dir:
-        db_path = Path(temp_dir) / "identity_agent.db"
-        original_db_path = store.DB_PATH
-        store.DB_PATH = db_path
-        try:
-            agent_logic._wallet = None
-            with (
-                patch("src.agents.identity_agent.identity_agent.AgentWallet", return_value=wallet),
-                patch("agent_wallet.AgentWallet", return_value=wallet),
-                patch.dict("os.environ", {"IDENTITY_FREE_QUERIES": "false"}, clear=False),
-            ):
-                client = TestClient(main.app)
-                response = client.post(
-                    "/a2a",
-                    json={
-                        "jsonrpc": "2.0",
-                        "id": 7,
-                        "method": "identity.get_trust_signal",
-                        "params": {"pubkey": "pubkey_any"},
-                    },
-                )
-                body = response.json()
-                assert response.status_code == 200
-                assert body["result"]["payment_required"] is True
-                assert "payment_request" in body["result"]
-                assert "payment_hash" in body["result"]
-        finally:
-            store.DB_PATH = original_db_path
+def rpc(client, method, params=None, request_id=1):
+    return client.post(
+        "/a2a",
+        json={"jsonrpc": "2.0", "id": request_id, "method": method, "params": params or {}},
+    )
+
+
+class TestRegistrationOverA2A:
+    def test_full_quote_pay_verify_flow(self, client, fake_lnbits):
+        params = {
+            "pubkey": PUBKEY,
+            "handle": "alice",
+            "domain": "example.com",
+            "relays": ["wss://relay.damus.io"],
+        }
+
+        unpaid = rpc(client, "identity.register_nip05", params).json()
+        assert unpaid["error"]["code"] == JSONRPC_PAYMENT_REQUIRED
+        quote = unpaid["error"]["data"]
+        assert quote["amount_sats"] == 1000
+        assert "payment_request" in quote
+
+        fake_lnbits.settle(quote["payment_hash"])
+
+        paid = rpc(
+            client, "identity.register_nip05", {**params, "payment_hash": quote["payment_hash"]}
+        ).json()
+        assert paid["result"]["status"] == "verified"
+        assert paid["result"]["nip05"] == "alice@example.com"
+
+    def test_registration_payment_cannot_be_replayed(self, client, fake_lnbits):
+        params = {"pubkey": PUBKEY, "handle": "alice", "domain": "example.com"}
+        quote = rpc(client, "identity.register_nip05", params).json()["error"]["data"]
+        fake_lnbits.settle(quote["payment_hash"])
+
+        paid = {**params, "payment_hash": quote["payment_hash"]}
+        assert rpc(client, "identity.register_nip05", paid).json()["result"]["status"] == "verified"
+
+        replay = rpc(client, "identity.register_nip05", paid).json()
+        assert replay["error"]["data"]["error"] == "already_consumed"
+
+
+class TestPaidQueries:
+    def test_queries_require_payment_when_free_mode_is_off(self, client):
+        with patch.dict("os.environ", {"IDENTITY_FREE_QUERIES": "false"}, clear=False):
+            body = rpc(client, "identity.get_trust_signal", {"pubkey": PUBKEY}).json()
+
+        assert body["error"]["code"] == JSONRPC_PAYMENT_REQUIRED
+        assert body["error"]["data"]["payment_required"] is True
+        assert "payment_request" in body["error"]["data"]
+
+    def test_queries_are_free_when_free_mode_is_on(self, client, fake_lnbits):
+        params = {"pubkey": PUBKEY, "handle": "alice", "domain": "example.com"}
+        quote = rpc(client, "identity.register_nip05", params).json()["error"]["data"]
+        fake_lnbits.settle(quote["payment_hash"])
+        rpc(client, "identity.register_nip05", {**params, "payment_hash": quote["payment_hash"]})
+        upsert_identity_metadata(
+            pubkey=PUBKEY,
+            category="dev",
+            tags=["nostr"],
+            trust_score=0.75,
+            db_path=store.DB_PATH,
+        )
+
+        with patch.dict("os.environ", {"IDENTITY_FREE_QUERIES": "true"}, clear=False):
+            assert rpc(client, "identity.get_identity", {"pubkey": PUBKEY}).json()["result"][
+                "pubkey"
+            ] == PUBKEY
+            assert rpc(client, "identity.list_verified").json()["result"]["count"] >= 1
+            assert rpc(client, "identity.search", {"query": "alice"}).json()["result"]["count"] >= 1
+            trust = rpc(client, "identity.get_trust_signal", {"pubkey": PUBKEY}).json()
+            assert "warning" in trust["result"]
+
+
+class TestJsonRpcEnvelope:
+    def test_unknown_method_returns_a_jsonrpc_error(self, client):
+        body = rpc(client, "nope.nothing").json()
+
+        assert body["error"]["code"] == JSONRPC_METHOD_NOT_FOUND
+        assert "result" not in body
+
+    def test_malformed_json_returns_a_parse_error(self, client):
+        response = client.post(
+            "/a2a", content=b"{not json", headers={"Content-Type": "application/json"}
+        )
+
+        assert response.json()["error"]["code"] == JSONRPC_PARSE_ERROR
+
+    def test_missing_method_is_an_invalid_request(self, client):
+        body = client.post("/a2a", json={"jsonrpc": "2.0", "id": 1}).json()
+
+        assert body["error"]["code"] == -32600
+
+    def test_request_id_is_echoed_back(self, client):
+        body = rpc(client, "nope.nothing", request_id=99).json()
+
+        assert body["id"] == 99

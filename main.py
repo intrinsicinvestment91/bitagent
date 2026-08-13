@@ -386,6 +386,7 @@ JSONRPC_INVALID_REQUEST = -32600
 JSONRPC_METHOD_NOT_FOUND = -32601
 JSONRPC_INVALID_PARAMS = -32602
 JSONRPC_PAYMENT_REQUIRED = -32000
+JSONRPC_SERVICE_UNAVAILABLE = -32001
 
 
 def _rpc_error(code: int, message: str, request_id=None, data: dict | None = None) -> JSONResponse:
@@ -426,7 +427,17 @@ async def a2a_endpoint(request: Request):
 
     if isinstance(result, dict) and result.get("payment_required"):
         return _rpc_error(
-            JSONRPC_PAYMENT_REQUIRED, "Payment required", request_id, data=result
+            JSONRPC_PAYMENT_REQUIRED,
+            str(result.get("detail") or "Payment required"),
+            request_id,
+            data=result,
+        )
+    if isinstance(result, dict) and result.get("service_unavailable"):
+        return _rpc_error(
+            JSONRPC_SERVICE_UNAVAILABLE,
+            str(result.get("detail") or "Service unavailable"),
+            request_id,
+            data=result,
         )
     if isinstance(result, dict) and "error" in result and len(result) == 1:
         message = str(result["error"])

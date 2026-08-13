@@ -1,5 +1,6 @@
 import os
 import logging
+from contextlib import asynccontextmanager
 from typing import Optional
 
 import httpx
@@ -14,10 +15,11 @@ class FedimintWallet:
     If not configured, enabled=False and all methods are no-ops.
     """
 
-    def __init__(self):
+    def __init__(self, client: Optional[httpx.AsyncClient] = None):
         self.base_url = os.getenv("FEDIMINT_CLIENTD_URL", "").rstrip("/")
         self.password = os.getenv("FEDIMINT_CLIENTD_PASSWORD", "")
         self._enabled = bool(self.base_url and self.password)
+        self._client = client
 
     @property
     def enabled(self) -> bool:
@@ -26,12 +28,21 @@ class FedimintWallet:
     def _headers(self) -> dict:
         return {"Authorization": f"Bearer {self.password}"}
 
+    @asynccontextmanager
+    async def _session(self):
+        """Reuse an injected client (tests) or open a short-lived one."""
+        if self._client is not None:
+            yield self._client
+            return
+        async with httpx.AsyncClient() as client:
+            yield client
+
     async def validate_notes(self, notes: str) -> Optional[int]:
         """Check ecash notes are valid. Returns amount in msats, or None if invalid. Does not redeem."""
         if not self._enabled:
             return None
         try:
-            async with httpx.AsyncClient() as client:
+            async with self._session() as client:
                 resp = await client.post(
                     f"{self.base_url}/v2/mint/validate",
                     json={"notes": notes},
@@ -49,7 +60,7 @@ class FedimintWallet:
         if not self._enabled:
             return None
         try:
-            async with httpx.AsyncClient() as client:
+            async with self._session() as client:
                 resp = await client.post(
                     f"{self.base_url}/v2/mint/reissue",
                     json={"notes": notes},
@@ -84,7 +95,7 @@ class FedimintWallet:
         if not self._enabled:
             return None
         try:
-            async with httpx.AsyncClient() as client:
+            async with self._session() as client:
                 resp = await client.get(
                     f"{self.base_url}/v2/admin/info",
                     headers=self._headers(),
