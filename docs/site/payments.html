@@ -259,7 +259,7 @@ curl -X POST https://bitagent-production.up.railway.app/search/search \
   </table>
 
   <div class="callout">
-    <strong>Important:</strong> The <code>@require_payment</code> decorator in <code>src/core/payment.py</code> uses an incompatible escrow/<code>PaymentSecurityManager</code> system and is <strong>not wired to the real LNbits wallet</strong>. Do not use it. All live agents implement payment checks inline.
+    <strong>Single-use payments.</strong> Every invoice is recorded in a durable ledger before the 402 is returned, and redeeming it consumes the row atomically. A payment buys exactly one request, of exactly the service it was quoted for. If the wallet is unreachable, paid routes return <code>503</code> — never a free result. All priced routes go through <code>require_payment()</code> in <code>src/payments/gate.py</code>.
   </div>
 
   <h2>Agent prices</h2>
@@ -270,10 +270,10 @@ curl -X POST https://bitagent-production.up.railway.app/search/search \
       <tr><td>SearchAgent</td><td>10 sats</td><td>query</td></tr>
       <tr><td>IdentityAgent</td><td>10–1000 sats</td><td>operation</td></tr>
       <tr><td>WebFetchAgent</td><td>25 sats</td><td>URL</td></tr>
-      <tr><td>StreamfinderAgent</td><td>100 sats</td><td>request</td></tr>
+      <tr><td>StreamfinderAgent</td><td>free — synthetic demo data</td><td>request</td></tr>
       <tr><td>PolyglotAgent (translate)</td><td>100 sats</td><td>request</td></tr>
       <tr><td>PolyglotAgent (transcribe)</td><td>250 sats</td><td>request</td></tr>
-      <tr><td>CoordinatorAgent</td><td>350 sats</td><td>workflow</td></tr>
+      <tr><td>CoordinatorAgent</td><td>100–350 sats</td><td>workflow</td></tr>
     </tbody>
   </table>
 
