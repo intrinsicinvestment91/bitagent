@@ -2,6 +2,8 @@ import time
 import logging
 import httpx
 
+from src.payments import price_of
+
 logger = logging.getLogger(__name__)
 
 COINGECKO_URL = "https://api.coingecko.com/api/v3/simple/price"
@@ -95,8 +97,16 @@ async def sats_to_usd(sats: int) -> dict:
 class PriceOracleAgent:
     name = "PriceOracleAgent"
     description = "Real-time asset price feeds. BTC/USD and major crypto pairs."
-    price_sats = {"single": 2, "batch": 5, "convert": 1}
     supported_coins = ["bitcoin", "ethereum", "litecoin", "dogecoin", "monero"]
+
+    @property
+    def price_sats(self) -> dict:
+        """Prices from the shared catalog — the single source of truth."""
+        return {
+            "single": price_of("oracle.price"),
+            "batch": price_of("oracle.prices"),
+            "convert": price_of("oracle.convert"),
+        }
 
     def get_info(self) -> dict:
         return {

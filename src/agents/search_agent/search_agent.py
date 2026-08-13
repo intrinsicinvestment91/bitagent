@@ -2,6 +2,8 @@ import os
 import logging
 import httpx
 
+from src.payments import price_of
+
 logger = logging.getLogger(__name__)
 
 
@@ -94,7 +96,11 @@ async def search(query: str, num_results: int = 10) -> dict:
 class SearchAgent:
     name = "SearchAgent"
     description = "Web search. Returns titles, URLs, and snippets."
-    price_sats = 10
+
+    @property
+    def price_sats(self) -> int:
+        """Price from the shared catalog — the single source of truth."""
+        return price_of("search.query")
 
     def get_info(self) -> dict:
         backend = "duckduckgo"

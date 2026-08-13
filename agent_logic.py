@@ -1,29 +1,45 @@
+"""Top-level A2A JSON-RPC dispatcher.
+
+Every method here resolves a catalog service id and goes through the payment
+gate. Previously ``oracle.*``, ``fetch.*`` and ``search.*`` were dispatched with
+no payment check at all, so ``POST /a2a`` was a free mirror of the paid HTTP
+routes; and the streamfinder branch fell back to serving results for free when
+invoice creation raised.
+"""
+
 import logging
 import os
+
 from src.agents.streamfinder.streamfinder import StreamfinderAgent
+from src.payments import Quote, UnknownServiceError, paid_work, require_payment
 from src.security.secure_endpoints import sanitize_input
-from src.wallets.fedimint_wallet import FedimintWallet
 
 logger = logging.getLogger(__name__)
 
-_agent = None
-_wallet = None
-_fedimint = FedimintWallet()
+#: A2A method name -> catalog service id. Methods absent from this map are
+#: rejected, so a new route cannot be added without also pricing it.
+METHOD_SERVICES = {
+    "oracle.price": "oracle.price",
+    "oracle.prices": "oracle.prices",
+    "oracle.convert": "oracle.convert",
+    "fetch.url": "fetch.url",
+    "search.query": "search.query",
+    "identity.register_nip05": "identity.register_nip05",
+    "identity.get_identity": "identity.get_identity",
+    "identity.list_verified": "identity.list_verified",
+    "identity.search": "identity.search",
+    "identity.get_trust_signal": "identity.get_trust_signal",
+    "streamfinder.search": "streamfinder.search",
+}
+
+_streamfinder: StreamfinderAgent | None = None
 
 
-def _get_agent():
-    global _agent
-    if _agent is None:
-        _agent = StreamfinderAgent()
-    return _agent
-
-
-def _get_wallet():
-    global _wallet
-    if _wallet is None:
-        from agent_wallet import AgentWallet
-        _wallet = AgentWallet()
-    return _wallet
+def _get_streamfinder() -> StreamfinderAgent:
+    global _streamfinder
+    if _streamfinder is None:
+        _streamfinder = StreamfinderAgent()
+    return _streamfinder
 
 
 def _identity_checks_enabled() -> bool:
@@ -62,162 +78,125 @@ async def _enforce_identity_trust_for_paid_request(params: dict) -> dict | None:
     return None
 
 
+def _quote_to_dict(quote: Quote) -> dict:
+    """Render a gate Quote as an A2A result body."""
+    return dict(quote.body)
+
+
+async def dispatch_service(method: str, params: dict) -> dict:
+    """Run the work for a method whose payment has already settled.
+
+    Public so the coordinator can execute chain steps in-process after it has
+    collected payment for the whole chain, instead of HTTP-calling itself.
+    """
+    if method.startswith("oracle."):
+        from src.agents.price_oracle_agent.price_oracle import PriceOracleAgent
+
+        oracle = PriceOracleAgent()
+        if method == "oracle.price":
+            coin = str(params.get("coin", "bitcoin")).lower()
+            result = await oracle.price([coin])
+            return result.get(coin, {"error": "Not found"})
+        if method == "oracle.prices":
+            coins = [str(c).lower() for c in params.get("coins", ["bitcoin"])[:10]]
+            return await oracle.price(coins)
+        return await oracle.convert(params.get("sats", 0))
+
+    if method == "fetch.url":
+        from src.agents.web_fetch_agent.web_fetch import WebFetchAgent
+
+        return await WebFetchAgent().fetch(params["url"])
+
+    if method == "search.query":
+        from src.agents.search_agent.search_agent import SearchAgent
+
+        return await SearchAgent().search(params["query"], params.get("num_results", 10))
+
+    if method.startswith("identity."):
+        from src.agents.identity_agent import IdentityAgent
+
+        identity = IdentityAgent()
+        if method == "identity.get_identity":
+            return await identity.get_identity(pubkey=params.get("pubkey", ""))
+        if method == "identity.list_verified":
+            return await identity.list_verified()
+        if method == "identity.search":
+            return await identity.search(query=params.get("query", ""))
+        return await identity.get_trust_signal(pubkey=params.get("pubkey", ""))
+
+    # streamfinder.search
+    query = sanitize_input(params["query"], max_length=500)
+    return _get_streamfinder().perform_search(query)
+
+
+def _validate_params(method: str, params: dict) -> str | None:
+    """Return an error message when required params are missing."""
+    if method == "fetch.url" and not params.get("url"):
+        return "Missing 'url'"
+    if method == "search.query" and not params.get("query"):
+        return "Missing 'query'"
+    if method == "streamfinder.search" and not params.get("query"):
+        return "Missing 'query' parameter"
+    if method in {"identity.get_identity", "identity.get_trust_signal"} and not params.get(
+        "pubkey"
+    ):
+        return "Missing 'pubkey'"
+    if method == "identity.search" and not params.get("query"):
+        return "Missing 'query'"
+    return None
+
+
 async def handle_a2a_request(method: str, params: dict) -> dict:
-    try:
-        # Route oracle, fetch, search methods to their agents
-        if method.startswith("oracle."):
-            from src.agents.price_oracle_agent.price_oracle import PriceOracleAgent
-            oracle = PriceOracleAgent()
-            if method == "oracle.price":
-                return await oracle.price([params.get("coin", "bitcoin")])
-            if method == "oracle.prices":
-                return await oracle.price(params.get("coins", ["bitcoin"]))
-            if method == "oracle.convert":
-                return await oracle.convert(params.get("sats", 0))
-            return {"error": f"Unknown oracle method '{method}'"}
+    """Dispatch one A2A call. Never returns service output without settlement."""
+    params = params or {}
 
-        if method.startswith("fetch."):
-            from src.agents.web_fetch_agent.web_fetch import WebFetchAgent
-            fetcher = WebFetchAgent()
-            if method == "fetch.url":
-                url = params.get("url")
-                if not url:
-                    return {"error": "Missing 'url'"}
-                return await fetcher.fetch(url)
-            return {"error": f"Unknown fetch method '{method}'"}
+    service_id = METHOD_SERVICES.get(method)
+    if service_id is None:
+        return {"error": f"Unsupported method '{method}'"}
 
-        if method.startswith("search."):
-            from src.agents.search_agent.search_agent import SearchAgent
-            searcher = SearchAgent()
-            if method == "search.query":
-                q = params.get("query")
-                if not q:
-                    return {"error": "Missing 'query'"}
-                return await searcher.search(q, params.get("num_results", 10))
-            return {"error": f"Unknown search method '{method}'"}
+    validation_error = _validate_params(method, params)
+    if validation_error:
+        return {"error": validation_error}
 
-        if method.startswith("identity."):
-            from src.agents.identity_agent import IdentityAgent
-
-            identity = IdentityAgent()
-            free_queries = os.getenv("IDENTITY_FREE_QUERIES", "false").lower() == "true"
-
-            if method == "identity.register_nip05":
-                return await identity.register_nip05(
-                    pubkey=params.get("pubkey", ""),
-                    handle=params.get("handle", ""),
-                    domain=params.get("domain", ""),
-                    relays=params.get("relays"),
-                    payment_hash=params.get("payment_hash"),
-                )
-
-            if method not in {
-                "identity.get_identity",
-                "identity.list_verified",
-                "identity.search",
-                "identity.get_trust_signal",
-            }:
-                return {"error": f"Unknown identity method '{method}'"}
-
-            if not free_queries:
-                payment_hash = params.get("payment_hash")
-                if payment_hash:
-                    wallet = _get_wallet()
-                    if not wallet.check_invoice(payment_hash):
-                        return {"error": "Payment not verified"}
-                else:
-                    wallet = _get_wallet()
-                    amount = int(identity.get_price(method))
-                    invoice_data = wallet.create_invoice(
-                        amount=amount,
-                        memo=f"Identity query: {method}",
-                    )
-                    created_hash = invoice_data.get("payment_hash")
-                    payment_request = invoice_data.get("bolt11") or invoice_data.get("payment_request")
-                    if not created_hash or not payment_request:
-                        return {"error": "Unable to create payment invoice"}
-                    return {
-                        "payment_required": True,
-                        "amount_sats": amount,
-                        "payment_request": payment_request,
-                        "payment_hash": created_hash,
-                    }
-
-            if method == "identity.get_identity":
-                return await identity.get_identity(pubkey=params.get("pubkey", ""))
-            if method == "identity.list_verified":
-                return await identity.list_verified()
-            if method == "identity.search":
-                return await identity.search(query=params.get("query", ""))
-            if method == "identity.get_trust_signal":
-                return await identity.get_trust_signal(pubkey=params.get("pubkey", ""))
-
-        agent = _get_agent()
-
-        if method != "streamfinder.search":
-            return {"error": f"Unsupported method '{method}'"}
-
-        query = params.get("query")
-        if not query:
-            return {"error": "Missing 'query' parameter"}
-
+    if method == "streamfinder.search":
         identity_gate_error = await _enforce_identity_trust_for_paid_request(params)
         if identity_gate_error:
             return identity_gate_error
 
-        query = sanitize_input(query, max_length=500)
-        ecash_notes = params.get("ecash_notes")
-        payment_hash = params.get("payment_hash")
+    # Registration binds the payment to a pending database row, so it owns its
+    # own settlement flow rather than using the generic gate here.
+    if method == "identity.register_nip05":
+        from src.agents.identity_agent import IdentityAgent
 
-        if ecash_notes:
-            if await _fedimint.verify_and_receive(ecash_notes, agent.get_price()):
-                return agent.perform_search(query)
-            return {"error": "Ecash payment invalid or insufficient"}
+        return await IdentityAgent().register_nip05(
+            pubkey=params.get("pubkey", ""),
+            handle=params.get("handle", ""),
+            domain=params.get("domain", ""),
+            relays=params.get("relays"),
+            payment_hash=params.get("payment_hash"),
+        )
 
-        if payment_hash:
-            wallet = _get_wallet()
-            if wallet.check_invoice(payment_hash):
-                return agent.perform_search(query)
-            return {"error": "Payment not verified"}
+    if method.startswith("identity.") and os.getenv(
+        "IDENTITY_FREE_QUERIES", "false"
+    ).lower() in {"1", "true", "yes", "on"}:
+        return await dispatch_service(method, params)
 
-        try:
-            wallet = _get_wallet()
-            invoice_data = wallet.create_invoice(
-                amount=agent.get_price(),
-                memo=f"Streamfinder: {query}",
-            )
-            payment_hash = invoice_data.get("payment_hash")
-            payment_request = invoice_data.get("bolt11") or invoice_data.get("payment_request")
-            if not payment_hash or not payment_request:
-                raise ValueError("Invalid invoice response")
-            inv = {
-                "payment_required": True,
-                "amount_sats": agent.get_price(),
-                "payment_request": payment_request,
-                "payment_hash": payment_hash,
-            }
-            if _fedimint.enabled:
-                inv["ecash_accepted"] = True
-                inv["ecash_amount_msats"] = agent.get_price() * 1000
-            return inv
-        except Exception:
-            return agent.perform_search(query)
-
-    except Exception as e:
-        logger.error(f"handle_a2a_request error: {e}")
-        return {"error": str(e)}
-
-
-async def handle_payment_confirmation(body: dict) -> dict:
     try:
-        payment_hash = body.get("payment_hash")
-        query = body.get("query", "")
-        if not payment_hash:
-            return {"error": "Missing payment_hash"}
-        wallet = _get_wallet()
-        if not wallet.check_invoice(payment_hash):
-            return {"error": "Payment not yet received"}
-        return _get_agent().perform_search(query)
-    except Exception as e:
-        logger.error(f"handle_payment_confirmation error: {e}")
-        return {"error": str(e)}
+        outcome = await require_payment(
+            service_id,
+            params.get("payment_hash"),
+            params.get("ecash_notes"),
+            memo=method,
+        )
+    except UnknownServiceError:
+        return {"error": f"Unsupported method '{method}'"}
+
+    if isinstance(outcome, Quote):
+        return _quote_to_dict(outcome)
+
+    try:
+        async with paid_work(outcome):
+            return await dispatch_service(method, params)
+    except Exception:
+        logger.exception("A2A method %s failed after settlement", method)
+        return {"error": "Service temporarily unavailable. Your payment can be retried."}

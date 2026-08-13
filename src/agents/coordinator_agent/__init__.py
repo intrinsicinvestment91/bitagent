@@ -1,163 +1,163 @@
 # src/agents/coordinator_agent/__init__.py
+"""CoordinatorAgent HTTP router.
 
-import sys
+Both paid endpoints here used to be unreachable in every configuration: they
+were wrapped in ``@require_authentication`` and ``@require_payment`` from
+``src.security.secure_endpoints``, which called a FastAPI dependency outside
+dependency injection (TypeError → 401) and imported a module that is not on the
+import path (ModuleNotFoundError → 500). They now use the shared payment gate
+like every other agent.
+"""
+
+import base64
+import binascii
+import logging
 import os
 import tempfile
-import logging
+from typing import Optional
 
-# Add the project root to the path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi.responses import JSONResponse
 
-from fastapi import APIRouter, File, UploadFile, HTTPException, Request, Depends
 from src.agents.coordinator_agent.coordinator_agent import CoordinatorAgent
-from src.security.secure_endpoints import (
-    require_authentication, 
-    require_payment, 
-    TaskChainRequest,
-    validate_file_upload,
-    sanitize_input
-)
+from src.payments import Quote, get_service, paid_work, pricing_for, require_payment
+from src.security.secure_endpoints import TaskChainRequest, sanitize_input
 
-# Create agent instance
+logger = logging.getLogger(__name__)
+
 agent = CoordinatorAgent()
-
-# Create router
 router = APIRouter()
+
+MAX_AUDIO_BYTES = 25 * 1024 * 1024
+
 
 @router.get("/info")
 async def get_agent_info():
     """Get agent information."""
     return agent.get_info()
 
+
 @router.get("/services")
 async def get_services():
-    """Get available services."""
     return {
         "services": agent.list_services(),
-        "pricing": agent.get_price()
+        "pricing": pricing_for("coordinator"),
+        "details": [
+            get_service("coordinator.translate_audio").info(),
+            get_service("coordinator.chain_tasks").info(),
+        ],
     }
 
+
 @router.post("/translate_audio")
-@require_authentication(["read", "write"])
-@require_payment(min_sats=350, service_name="translate_audio")
 async def translate_audio(
-    request: Request,
-    audio: UploadFile = File(...), 
-    target_language: str = "en"
+    audio: UploadFile = File(...),
+    target_language: str = Form(default="en"),
+    payment_hash: Optional[str] = Form(default=None),
+    ecash_notes: Optional[str] = Form(default=None),
 ):
-    """
-    Accepts an audio file, transcribes it via PolyglotAgent, then translates it.
-    Returns both the transcription and translated text.
-    Requires authentication and payment.
-    """
-    try:
-        # Validate file upload
-        audio = validate_file_upload(audio, max_size=100 * 1024 * 1024)  # 100MB limit
-        
-        # Sanitize target language
+    """Transcribe an audio file via PolyglotAgent, then translate the result."""
+    outcome = await require_payment(
+        "coordinator.translate_audio", payment_hash, ecash_notes, memo="Transcribe and translate"
+    )
+    if isinstance(outcome, Quote):
+        return JSONResponse(status_code=outcome.status_code, content=outcome.body)
+
+    async with paid_work(outcome):
         target_language = sanitize_input(target_language, max_length=10)
-        
-        # Log the request
-        agent_id = getattr(request.state, 'agent_id', 'unknown')
-        logging.info(f"Audio translation request from agent {agent_id}: {audio.filename} -> {target_language}")
-        
-        # Save the uploaded audio temporarily
+        audio_bytes = await audio.read()
+        if len(audio_bytes) > MAX_AUDIO_BYTES:
+            raise HTTPException(413, f"Audio exceeds {MAX_AUDIO_BYTES // (1024 * 1024)} MB limit")
+
         with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_audio:
-            temp_audio.write(await audio.read())
+            temp_audio.write(audio_bytes)
             audio_path = temp_audio.name
 
         try:
-            # Use agent's service processing
             result = await agent.handle_translate_audio(
-                audio_file_path=audio_path,
-                target_language=target_language
+                audio_file_path=audio_path, target_language=target_language
             )
-            
-            if "error" in result:
-                logging.error(f"Audio translation error: {result['error']}")
-                raise HTTPException(status_code=500, detail=result["error"])
-            
-            return result
         finally:
-            # Clean up temp file
             try:
                 os.unlink(audio_path)
-            except:
-                pass
+            except OSError:
+                logger.warning("Could not remove temporary audio file %s", audio_path)
 
-    except HTTPException:
-        raise
-    except Exception as e:
-        logging.error(f"Translate audio error: {e}")
-        raise HTTPException(status_code=500, detail="Audio translation service error")
+        if "error" in result:
+            raise HTTPException(502, result["error"])
+        return result
+
 
 @router.post("/chain_tasks")
-@require_authentication(["read", "write"])
-@require_payment(min_sats=100, service_name="chain_tasks")
-async def chain_tasks(request: Request, task_request: TaskChainRequest):
-    """
-    Chain multiple tasks together.
-    Requires authentication and payment.
-    """
-    try:
-        # Log the request
-        agent_id = getattr(request.state, 'agent_id', 'unknown')
-        logging.info(f"Task chaining request from agent {agent_id}: {len(task_request.tasks)} tasks")
-        
-        # Use agent's service processing
+async def chain_tasks(task_request: TaskChainRequest):
+    """Run a chain of services in one paid request."""
+    outcome = await require_payment(
+        "coordinator.chain_tasks",
+        task_request.payment_hash,
+        memo=f"Chain of {len(task_request.tasks)} tasks",
+    )
+    if isinstance(outcome, Quote):
+        return JSONResponse(status_code=outcome.status_code, content=outcome.body)
+
+    async with paid_work(outcome):
         result = await agent.handle_chain_tasks(task_request.tasks)
-        
         if "error" in result:
-            logging.error(f"Task chaining error: {result['error']}")
-            raise HTTPException(status_code=500, detail=result["error"])
-        
+            raise HTTPException(400, result["error"])
         return result
-    except HTTPException:
-        raise
-    except Exception as e:
-        logging.error(f"Chain tasks error: {e}")
-        raise HTTPException(status_code=500, detail="Task chaining service error")
 
-# A2A compatible endpoints (like StreamfinderAgent)
+
 @router.post("/a2a")
-async def handle_a2a_request(request: Request):
-    """
-    A2A compatible endpoint for agent-to-agent communication.
-    """
-    try:
-        body = await request.json()
-        logging.info(f"Received A2A request: {body}")
+async def a2a(body: dict):
+    """A2A twins of the two paid routes above — same service ids, same prices."""
+    method = body.get("method")
+    params = body.get("params") or {}
 
-        method = body.get("method")
-        params = body.get("params", {})
-
-        if method == "coordinator.translate_audio":
-            audio_data = params.get("audio_data")
-            target_language = params.get("target_language", "en")
-            
-            if not audio_data:
-                return {"error": "Missing 'audio_data' parameter"}
-            
-            result = await agent.handle_translate_audio(
-                audio_data=audio_data,
-                target_language=target_language
+    if method not in {"coordinator.translate_audio", "coordinator.chain_tasks"}:
+        return {
+            "error": (
+                f"Unsupported method '{method}'. Use 'coordinator.translate_audio' "
+                "or 'coordinator.chain_tasks'."
             )
-            return result
-            
-        elif method == "coordinator.chain_tasks":
-            tasks = params.get("tasks", [])
-            
-            if not tasks:
-                return {"error": "Missing 'tasks' parameter"}
-            
-            result = await agent.handle_chain_tasks(tasks)
-            return result
-            
-        else:
-            return {
-                "error": f"Unsupported method '{method}'. Use 'coordinator.translate_audio' or 'coordinator.chain_tasks'."
-            }
+        }
 
-    except Exception as e:
-        logging.error(f"Error in handle_a2a_request: {e}")
-        return {"error": str(e)}
+    if method == "coordinator.translate_audio":
+        audio_data = params.get("audio_data")
+        if not audio_data:
+            return {"error": "Missing 'audio_data' parameter"}
+        try:
+            # A2A carries binary as base64; this path previously handed the raw
+            # string to whisper and always failed with "not implemented yet".
+            decoded = base64.b64decode(audio_data, validate=True)
+        except (binascii.Error, ValueError):
+            return {"error": "'audio_data' must be base64-encoded audio"}
+        if len(decoded) > MAX_AUDIO_BYTES:
+            return {"error": f"Audio exceeds {MAX_AUDIO_BYTES // (1024 * 1024)} MB limit"}
+
+        outcome = await require_payment(
+            method,
+            params.get("payment_hash"),
+            params.get("ecash_notes"),
+            memo="Transcribe and translate",
+        )
+        if isinstance(outcome, Quote):
+            return JSONResponse(status_code=outcome.status_code, content=outcome.body)
+        async with paid_work(outcome):
+            return await agent.handle_translate_audio(
+                audio_data=decoded,
+                target_language=sanitize_input(params.get("target_language", "en"), max_length=10),
+            )
+
+    tasks = params.get("tasks") or []
+    if not tasks:
+        return {"error": "Missing 'tasks' parameter"}
+
+    outcome = await require_payment(
+        method,
+        params.get("payment_hash"),
+        params.get("ecash_notes"),
+        memo=f"Chain of {len(tasks)} tasks",
+    )
+    if isinstance(outcome, Quote):
+        return JSONResponse(status_code=outcome.status_code, content=outcome.body)
+    async with paid_work(outcome):
+        return await agent.handle_chain_tasks(tasks)

@@ -7,6 +7,8 @@ from urllib.parse import urlparse
 import httpx
 from bs4 import BeautifulSoup
 
+from src.payments import price_of
+
 logger = logging.getLogger(__name__)
 
 MAX_BYTES = 1_000_000  # 1MB
@@ -118,7 +120,11 @@ async def fetch_url(url: str) -> dict:
 class WebFetchAgent:
     name = "WebFetchAgent"
     description = "Fetch and parse web pages. Returns clean text content."
-    price_sats = 25
+
+    @property
+    def price_sats(self) -> int:
+        """Price from the shared catalog — the single source of truth."""
+        return price_of("fetch.url")
 
     def get_info(self) -> dict:
         return {
