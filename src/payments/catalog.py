@@ -14,8 +14,8 @@ reappear without failing at import time.
 from __future__ import annotations
 
 import importlib.util
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Callable
 
 
 class UnknownServiceError(KeyError):
@@ -148,9 +148,7 @@ def price_of(service_id: str) -> int:
 def pricing_for(prefix: str) -> dict[str, int]:
     """Prices for every service under a dotted prefix, e.g. ``oracle``."""
     return {
-        sid: svc.effective_price
-        for sid, svc in SERVICES.items()
-        if sid.split(".", 1)[0] == prefix
+        sid: svc.effective_price for sid, svc in SERVICES.items() if sid.split(".", 1)[0] == prefix
     }
 
 

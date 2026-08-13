@@ -1,4 +1,17 @@
+#!/usr/bin/env python3
+"""BaseAgent demo: identity, Nostr service advertisement, and the simulated wallet.
+
+Run from the repository root:
+
+    python -m examples.simulate_agents
+
+CameraFeedBot extends BaseAgent, whose default wallet is an in-memory simulation
+(``_SimWallet``) — no real sats move here. For the real Lightning flow, see
+examples/paid_request_flow.py.
+"""
+
 from src.agents.camera_feed_bot import CameraFeedBot
+
 
 def run_simulation():
     # Step 1: Create CameraFeedBot
@@ -30,6 +43,7 @@ def run_simulation():
     # Step 5: Show final balances
     print("\n📊 Wallet Balances After Transaction:")
     print(f"{cam_bot.name}: {cam_bot.balance()} sats")
+
 
 if __name__ == "__main__":
     run_simulation()

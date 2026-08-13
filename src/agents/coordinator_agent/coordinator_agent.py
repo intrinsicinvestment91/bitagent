@@ -5,6 +5,7 @@ import logging
 from src.agents.base_agent import BaseAgent
 from src.payments import pricing_for
 
+
 class CoordinatorAgent(BaseAgent):
     """
     Orchestrates multi-step AI tasks by calling other agents (e.g. translation, transcription).
@@ -15,16 +16,14 @@ class CoordinatorAgent(BaseAgent):
         self.description = "Routes complex tasks across multiple AI agents."
         self.services = {
             "translate_audio": "Transcribes then translates audio",
-            "chain_tasks": "Chain any services from other BitAgent agents"
+            "chain_tasks": "Chain any services from other BitAgent agents",
         }
         logging.info(f"CoordinatorAgent initialized with DID: {self.id}")
 
     @property
     def price_sats(self) -> dict:
         """Prices from the shared catalog — the single source of truth."""
-        return {
-            key.split(".", 1)[1]: value for key, value in pricing_for("coordinator").items()
-        }
+        return {key.split(".", 1)[1]: value for key, value in pricing_for("coordinator").items()}
 
     def get_info(self):
         return {
@@ -33,7 +32,7 @@ class CoordinatorAgent(BaseAgent):
             "did": self.id,
             "services": self.services,
             "pricing": self.price_sats,
-            "agent_endpoints": self.agent_endpoints
+            "agent_endpoints": self.agent_endpoints,
         }
 
     def list_services(self):
@@ -45,46 +44,50 @@ class CoordinatorAgent(BaseAgent):
             return self.price_sats.get(service, 0)
         return self.price_sats
 
-    async def handle_translate_audio(self, audio_file_path: str = None, audio_data: bytes = None, target_language: str = "en"):
+    async def handle_translate_audio(
+        self, audio_file_path: str = None, audio_data: bytes = None, target_language: str = "en"
+    ):
         """Handle translate_audio requests."""
         try:
             if not audio_data and not audio_file_path:
                 return {"error": "Missing 'audio_data' or 'audio_file_path' parameter"}
-            
+
             # Step 1: Transcribe audio via PolyglotAgent
             transcription_result = await self._call_polyglot_service(
-                "transcribe", 
-                {"audio_file_path": audio_file_path} if audio_file_path else {"audio_data": audio_data}
+                "transcribe",
+                {"audio_file_path": audio_file_path}
+                if audio_file_path
+                else {"audio_data": audio_data},
             )
-            
+
             if "error" in transcription_result:
                 return {"error": f"Transcription failed: {transcription_result['error']}"}
-            
+
             transcript_text = transcription_result["transcription"]
             detected_language = transcription_result["language"]
-            
+
             # Step 2: Translate transcription via PolyglotAgent
             translation_result = await self._call_polyglot_service(
                 "translate",
                 {
                     "text": transcript_text,
                     "source_lang": detected_language,
-                    "target_lang": target_language
-                }
+                    "target_lang": target_language,
+                },
             )
-            
+
             if "error" in translation_result:
                 return {"error": f"Translation failed: {translation_result['error']}"}
-            
+
             translated_text = translation_result["translated"]
-            
+
             return {
                 "transcription": transcript_text,
                 "language": detected_language,
                 "translation": translated_text,
-                "target_language": target_language
+                "target_language": target_language,
             }
-            
+
         except Exception as e:
             logging.error(f"Translate audio failed: {e}")
             return {"error": f"Translate audio failed: {str(e)}"}
@@ -94,28 +97,21 @@ class CoordinatorAgent(BaseAgent):
         try:
             if not tasks:
                 return {"error": "No tasks provided"}
-            
+
             results = []
             for task in tasks:
                 service = task.get("service")
                 task_params = task.get("parameters", {})
-                
+
                 if not service:
                     return {"error": "Task missing 'service' field"}
-                
+
                 # Call the appropriate service
                 result = await self._call_service(service, task_params)
-                results.append({
-                    "service": service,
-                    "parameters": task_params,
-                    "result": result
-                })
-            
-            return {
-                "task_chain_results": results,
-                "total_tasks": len(tasks)
-            }
-            
+                results.append({"service": service, "parameters": task_params, "result": result})
+
+            return {"task_chain_results": results, "total_tasks": len(tasks)}
+
         except Exception as e:
             logging.error(f"Task chaining failed: {e}")
             return {"error": f"Task chaining failed: {str(e)}"}
@@ -155,8 +151,7 @@ class CoordinatorAgent(BaseAgent):
         if service not in METHOD_SERVICES:
             return {
                 "error": (
-                    f"Unknown service '{service}'. Available: "
-                    f"{', '.join(sorted(METHOD_SERVICES))}"
+                    f"Unknown service '{service}'. Available: {', '.join(sorted(METHOD_SERVICES))}"
                 )
             }
         try:
@@ -186,7 +181,7 @@ class CoordinatorAgent(BaseAgent):
                 "did": self.id,
                 "services": self.services,
                 "pricing": self.price_sats,
-                "note": f"offered by {self.name}"
-            }
+                "note": f"offered by {self.name}",
+            },
         }
         return nostr_event

@@ -1,7 +1,6 @@
-import os
 import logging
+import os
 from contextlib import asynccontextmanager
-from typing import Optional
 
 import httpx
 
@@ -15,7 +14,7 @@ class FedimintWallet:
     If not configured, enabled=False and all methods are no-ops.
     """
 
-    def __init__(self, client: Optional[httpx.AsyncClient] = None):
+    def __init__(self, client: httpx.AsyncClient | None = None):
         self.base_url = os.getenv("FEDIMINT_CLIENTD_URL", "").rstrip("/")
         self.password = os.getenv("FEDIMINT_CLIENTD_PASSWORD", "")
         self._enabled = bool(self.base_url and self.password)
@@ -37,7 +36,7 @@ class FedimintWallet:
         async with httpx.AsyncClient() as client:
             yield client
 
-    async def validate_notes(self, notes: str) -> Optional[int]:
+    async def validate_notes(self, notes: str) -> int | None:
         """Check ecash notes are valid. Returns amount in msats, or None if invalid. Does not redeem."""
         if not self._enabled:
             return None
@@ -55,7 +54,7 @@ class FedimintWallet:
             logger.error(f"Fedimint validate error: {e}")
             return None
 
-    async def receive_notes(self, notes: str) -> Optional[int]:
+    async def receive_notes(self, notes: str) -> int | None:
         """Redeem ecash notes into the federation wallet. Returns amount in msats or None on failure."""
         if not self._enabled:
             return None
@@ -90,7 +89,7 @@ class FedimintWallet:
         received = await self.receive_notes(notes)
         return received is not None
 
-    async def get_balance_sats(self) -> Optional[int]:
+    async def get_balance_sats(self) -> int | None:
         """Return current federation wallet balance in sats."""
         if not self._enabled:
             return None

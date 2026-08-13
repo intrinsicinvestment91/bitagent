@@ -121,14 +121,10 @@ class AsyncLNbitsClient:
 
         for attempt in range(1, (_MAX_ATTEMPTS if retry else 1) + 1):
             try:
-                response = await self._client.request(
-                    method, url, headers=self._headers, **kwargs
-                )
+                response = await self._client.request(method, url, headers=self._headers, **kwargs)
             except httpx.HTTPError as exc:
                 last_error = exc
-                logger.warning(
-                    "LNbits %s %s failed (attempt %d): %s", method, path, attempt, exc
-                )
+                logger.warning("LNbits %s %s failed (attempt %d): %s", method, path, attempt, exc)
             else:
                 # 4xx is a client-side problem; retrying cannot help.
                 if response.status_code < 500:
@@ -181,9 +177,7 @@ class AsyncLNbitsClient:
     async def get_payment(self, payment_hash: str) -> PaymentRecord:
         """Look up a payment. Never raises — unreachable LNbits yields UNKNOWN."""
         try:
-            response = await self._request(
-                "GET", f"/api/v1/payments/{payment_hash}", retry=True
-            )
+            response = await self._request("GET", f"/api/v1/payments/{payment_hash}", retry=True)
         except LNbitsError as exc:
             logger.warning("Payment lookup unavailable for %s…: %s", payment_hash[:12], exc)
             return PaymentRecord(PaymentState.UNKNOWN)

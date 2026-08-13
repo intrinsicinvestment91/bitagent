@@ -6,9 +6,10 @@ Covers: response shape, pagination, service filter (valid + invalid),
 """
 
 import time
-import pytest
 from unittest.mock import MagicMock, patch
-from httpx import AsyncClient, ASGITransport
+
+import pytest
+from httpx import ASGITransport, AsyncClient
 
 from main import app
 from src.network.p2p_discovery import AgentInfo
@@ -45,8 +46,8 @@ def client():
 # GET /agents/registry — list
 # ---------------------------------------------------------------------------
 
-class TestRegistryList:
 
+class TestRegistryList:
     async def test_empty_registry_returns_zero(self, client):
         with patch(_GET_MGR, return_value=_stub_manager()):
             async with client as c:
@@ -96,8 +97,18 @@ class TestRegistryList:
             async with client as c:
                 r = await c.get("/agents/registry")
         a = r.json()["agents"][0]
-        for field in ("agent_id", "name", "description", "endpoint", "services",
-                      "public_key", "protocol", "last_seen", "reputation_score", "capabilities"):
+        for field in (
+            "agent_id",
+            "name",
+            "description",
+            "endpoint",
+            "services",
+            "public_key",
+            "protocol",
+            "last_seen",
+            "reputation_score",
+            "capabilities",
+        ):
             assert field in a, f"missing field: {field}"
 
     async def test_cache_control_header_present(self, client):
@@ -112,8 +123,8 @@ class TestRegistryList:
 # Pagination
 # ---------------------------------------------------------------------------
 
-class TestRegistryPagination:
 
+class TestRegistryPagination:
     def _many_agents(self, n: int) -> list[AgentInfo]:
         return [_make_agent(f"agent-{i}", ["svc"]) for i in range(n)]
 
@@ -134,7 +145,7 @@ class TestRegistryPagination:
             async with client as c:
                 r = await c.get("/agents/registry?limit=4&offset=8")
         body = r.json()
-        assert body["count"] == 2       # only 2 remain after offset 8
+        assert body["count"] == 2  # only 2 remain after offset 8
         assert body["total"] == 10
         assert body["offset"] == 8
 
@@ -170,8 +181,8 @@ class TestRegistryPagination:
 # Service filter validation
 # ---------------------------------------------------------------------------
 
-class TestServiceFilterValidation:
 
+class TestServiceFilterValidation:
     async def test_valid_dotted_service_accepted(self, client):
         with patch(_GET_MGR, return_value=_stub_manager()):
             async with client as c:
@@ -214,8 +225,8 @@ class TestServiceFilterValidation:
 # GET /agents/registry/{agent_id}
 # ---------------------------------------------------------------------------
 
-class TestRegistryGetById:
 
+class TestRegistryGetById:
     async def test_returns_known_agent(self, client):
         agent = _make_agent("oracle", ["price"])
         with patch(_GET_MGR, return_value=_stub_manager(agent)):

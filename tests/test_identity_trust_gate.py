@@ -52,9 +52,7 @@ async def test_trust_checks_are_off_by_default(free_streamfinder):
 
 async def test_enabled_rejects_a_request_with_no_requester(free_streamfinder):
     with patch.dict("os.environ", TRUSTED, clear=False):
-        result = await agent_logic.handle_a2a_request(
-            "streamfinder.search", {"query": "Matrix"}
-        )
+        result = await agent_logic.handle_a2a_request("streamfinder.search", {"query": "Matrix"})
 
     assert "requester_pubkey" in result["error"]
 

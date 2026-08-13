@@ -24,9 +24,7 @@ class TestQuoting:
         assert outcome.body["payment_request"].startswith("lnbc")
         assert outcome.body["service"] == "search.query"
 
-    async def test_quote_is_recorded_in_the_ledger_before_it_is_returned(
-        self, paid_gate, ledger
-    ):
+    async def test_quote_is_recorded_in_the_ledger_before_it_is_returned(self, paid_gate, ledger):
         outcome = await paid_gate.require_payment("search.query")
         row = ledger.get(outcome.body["payment_hash"])
 
@@ -111,9 +109,7 @@ class TestServiceAndAmountBinding:
         fake_lnbits.settle(quote.body["payment_hash"])
         fake_lnbits.reported_amount = 1  # settled far below the 100 sat price
 
-        outcome = await paid_gate.require_payment(
-            "polyglot.translate", quote.body["payment_hash"]
-        )
+        outcome = await paid_gate.require_payment("polyglot.translate", quote.body["payment_hash"])
 
         assert isinstance(outcome, Quote)
         assert outcome.body["error"] == "amount_mismatch"
@@ -128,9 +124,7 @@ class TestServiceAndAmountBinding:
         assert isinstance(outcome, Quote)
         assert outcome.body["error"] == "invalid_payment"
 
-    async def test_settlement_proceeds_when_lnbits_reports_no_amount(
-        self, paid_gate, fake_lnbits
-    ):
+    async def test_settlement_proceeds_when_lnbits_reports_no_amount(self, paid_gate, fake_lnbits):
         # Schema drift must not cause an outage: the ledger binding is the
         # primary control, so a missing amount is logged, not fatal.
         quote = await paid_gate.require_payment("search.query")
@@ -203,9 +197,7 @@ class TestFailClosed:
         monkeypatch.setitem(
             catalog.SERVICES,
             "search.query",
-            catalog.Service(
-                "search.query", "Web search", 10, is_available=lambda: False
-            ),
+            catalog.Service("search.query", "Web search", 10, is_available=lambda: False),
         )
 
         outcome = await paid_gate.require_payment("search.query")
@@ -223,9 +215,7 @@ class TestFreeMode:
         assert outcome.amount_sats == 0
         assert outcome.method == "free"
 
-    async def test_synthetic_services_are_free_even_when_payments_are_enforced(
-        self, paid_gate
-    ):
+    async def test_synthetic_services_are_free_even_when_payments_are_enforced(self, paid_gate):
         outcome = await paid_gate.require_payment("streamfinder.search")
 
         assert isinstance(outcome, Settled)

@@ -29,7 +29,11 @@ AGENT_A2A_ROUTES = [
     ("/oracle/a2a", "oracle.prices", {"coins": ["bitcoin"]}),
     ("/oracle/a2a", "oracle.convert", {"sats": 1000}),
     ("/polyglot/a2a", "polyglot.translate", {"text": "hello"}),
-    ("/coordinator/a2a", "coordinator.chain_tasks", {"tasks": [{"service": "x", "parameters": {}}]}),
+    (
+        "/coordinator/a2a",
+        "coordinator.chain_tasks",
+        {"tasks": [{"service": "x", "parameters": {}}]},
+    ),
 ]
 
 TOP_LEVEL_A2A_METHODS = [
@@ -104,7 +108,9 @@ class TestEveryPricedServiceIsReachableAndGated:
         unmapped = {
             sid
             for sid, svc in SERVICES.items()
-            if svc.price_sats > 0 and sid not in METHOD_SERVICES and not sid.startswith("coordinator.")
+            if svc.price_sats > 0
+            and sid not in METHOD_SERVICES
+            and not sid.startswith("coordinator.")
         }
         assert not unmapped, f"priced services missing from the A2A map: {unmapped}"
 

@@ -7,6 +7,7 @@ import os
 from src.agents.base_agent import BaseAgent
 from src.payments import pricing_for
 
+
 class PolyglotAgent(BaseAgent):
     """
     An AI-to-AI translation and transcription agent.
@@ -19,16 +20,14 @@ class PolyglotAgent(BaseAgent):
         self.supported_languages = ["en", "es", "fr", "de", "zh", "ar", "hi", "ru", "pt", "ja"]
         self.services = {
             "translate": "Translate text from one language to another",
-            "transcribe": "Transcribe speech to text (audio)"
+            "transcribe": "Transcribe speech to text (audio)",
         }
         logging.info(f"PolyglotAgent initialized with DID: {self.id}")
 
     @property
     def price_sats(self) -> dict:
         """Prices read from the shared catalog — the single source of truth."""
-        return {
-            key.split(".", 1)[1]: value for key, value in pricing_for("polyglot").items()
-        }
+        return {key.split(".", 1)[1]: value for key, value in pricing_for("polyglot").items()}
 
     def get_info(self):
         return {
@@ -37,7 +36,7 @@ class PolyglotAgent(BaseAgent):
             "did": self.id,
             "supported_languages": self.supported_languages,
             "services": self.services,
-            "pricing": self.price_sats
+            "pricing": self.price_sats,
         }
 
     def list_services(self):
@@ -49,12 +48,14 @@ class PolyglotAgent(BaseAgent):
             return self.price_sats.get(service, 0)
         return self.price_sats
 
-    async def handle_translation(self, text: str, source_lang: str = "auto", target_lang: str = "en"):
+    async def handle_translation(
+        self, text: str, source_lang: str = "auto", target_lang: str = "en"
+    ):
         """Handle translation requests."""
         try:
             if not text:
                 return {"error": "Missing 'text' parameter"}
-            
+
             # Translation is a paid service, so a missing backend must be a hard
             # failure. This previously fell back to returning "[MOCK TRANSLATION]
             # <text>", which billed the caller 100 sats for their own input.
@@ -69,14 +70,8 @@ class PolyglotAgent(BaseAgent):
             if not translated:
                 raise RuntimeError("Translation backend returned an empty result")
 
+            return {"input": text, "from": source_lang, "to": target_lang, "translated": translated}
 
-            return {
-                "input": text,
-                "from": source_lang,
-                "to": target_lang,
-                "translated": translated
-            }
-            
         except Exception as e:
             logging.error(f"Translation failed: {e}")
             return {"error": f"Translation failed: {str(e)}"}
@@ -86,7 +81,7 @@ class PolyglotAgent(BaseAgent):
         try:
             if not audio_data and not audio_file_path:
                 return {"error": "Missing 'audio_data' or 'audio_file_path' parameter"}
-            
+
             # Whisper is excluded from the cloud image (it pulls ~2GB of PyTorch).
             # When it is absent the catalog marks polyglot.transcribe unavailable
             # and the gate refuses the request before reaching here, so this is a
@@ -119,7 +114,6 @@ class PolyglotAgent(BaseAgent):
                 "confidence": result.get("confidence", 0.0),
             }
 
-
         except Exception as e:
             logging.error(f"Transcription failed: {e}")
             return {"error": f"Transcription failed: {str(e)}"}
@@ -145,7 +139,7 @@ class PolyglotAgent(BaseAgent):
                 "did": self.id,
                 "services": self.services,
                 "pricing": self.price_sats,
-                "note": f"offered by {self.name}"
-            }
+                "note": f"offered by {self.name}",
+            },
         }
         return nostr_event

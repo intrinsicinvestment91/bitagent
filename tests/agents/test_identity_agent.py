@@ -6,7 +6,7 @@ service-binding behaviour of a paid registration.
 """
 
 import sqlite3
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -33,9 +33,7 @@ def agent(db_path, paid_gate):
 
 async def _register(agent, fake_lnbits, pubkey, handle, domain="example.com"):
     """Run the full quote → pay → verify registration handshake."""
-    quote = await agent.register_nip05(
-        pubkey=pubkey, handle=handle, domain=domain, relays=RELAYS
-    )
+    quote = await agent.register_nip05(pubkey=pubkey, handle=handle, domain=domain, relays=RELAYS)
     fake_lnbits.settle(quote["payment_hash"])
     return await agent.register_nip05(
         pubkey=pubkey,
@@ -93,7 +91,7 @@ class TestRegistration:
         verified = await _register(agent, fake_lnbits, PUBKEY_A, "bob")
 
         expires = datetime.fromisoformat(verified["expires_at"])
-        assert expires > datetime.now(timezone.utc)
+        assert expires > datetime.now(UTC)
 
     async def test_an_unpaid_registration_is_not_verified(self, agent):
         await agent.register_nip05(
@@ -137,7 +135,7 @@ class TestRegistration:
         with sqlite3.connect(db_path) as conn:
             conn.execute(
                 "UPDATE identities SET quote_expires_at = ? WHERE pubkey = ?",
-                ((datetime.now(timezone.utc) - timedelta(days=1)).isoformat(), PUBKEY_A),
+                ((datetime.now(UTC) - timedelta(days=1)).isoformat(), PUBKEY_A),
             )
             conn.commit()
 
@@ -184,9 +182,7 @@ class TestValidation:
 
 
 class TestTrust:
-    async def test_get_identity_returns_machine_readable_output(
-        self, agent, fake_lnbits, db_path
-    ):
+    async def test_get_identity_returns_machine_readable_output(self, agent, fake_lnbits, db_path):
         await _register(agent, fake_lnbits, PUBKEY_A, "alice")
         upsert_identity_metadata(
             pubkey=PUBKEY_A,
@@ -243,7 +239,7 @@ class TestTrust:
         with sqlite3.connect(db_path) as conn:
             conn.execute(
                 "UPDATE identities SET expires_at = ? WHERE pubkey = ?",
-                ((datetime.now(timezone.utc) - timedelta(days=1)).isoformat(), PUBKEY_A),
+                ((datetime.now(UTC) - timedelta(days=1)).isoformat(), PUBKEY_A),
             )
             conn.commit()
 

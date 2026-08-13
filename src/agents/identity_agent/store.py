@@ -1,6 +1,6 @@
 import json
 import sqlite3
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -18,7 +18,7 @@ SEARCH_LIMIT = 100
 
 
 def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _connect(db_path: str | Path | None = None) -> sqlite3.Connection:
@@ -74,9 +74,7 @@ def init_db(db_path: str | Path | None = None) -> None:
         conn.commit()
 
 
-def reclaim_expired_pending(
-    handle: str, domain: str, db_path: str | Path | None = None
-) -> bool:
+def reclaim_expired_pending(handle: str, domain: str, db_path: str | Path | None = None) -> bool:
     """Free a handle held by an unpaid registration whose invoice has expired.
 
     Registration inserts a pending row *before* payment, and the UNIQUE(handle,
@@ -195,7 +193,9 @@ def get_identity_by_pubkey(pubkey: str, db_path: str | Path | None = None) -> di
         return _identity_row_to_dict(row)
 
 
-def get_identity_by_handle(handle: str, domain: str, db_path: str | Path | None = None) -> dict[str, Any] | None:
+def get_identity_by_handle(
+    handle: str, domain: str, db_path: str | Path | None = None
+) -> dict[str, Any] | None:
     init_db(db_path)
     with _connect(db_path) as conn:
         row = conn.execute(

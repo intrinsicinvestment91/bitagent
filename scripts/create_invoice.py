@@ -1,4 +1,5 @@
 import os
+
 import requests
 from dotenv import load_dotenv
 
@@ -7,15 +8,12 @@ load_dotenv()
 LNBITS_ADMIN_KEY = os.getenv("LNBITS_ADMIN_KEY")
 LNBITS_ENDPOINT = os.getenv("LNBITS_ENDPOINT")
 
-headers = {
-    "X-Api-Key": LNBITS_ADMIN_KEY,
-    "Content-type": "application/json"
-}
+headers = {"X-Api-Key": LNBITS_ADMIN_KEY, "Content-type": "application/json"}
 
 data = {
     "out": False,
     "amount": 100,  # Amount in sats
-    "memo": "Test invoice from BitAgent"
+    "memo": "Test invoice from BitAgent",
 }
 
 response = requests.post(f"{LNBITS_ENDPOINT}/api/v1/payments", headers=headers, json=data)

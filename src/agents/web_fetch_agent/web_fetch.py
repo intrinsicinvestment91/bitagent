@@ -1,7 +1,7 @@
 import ipaddress
 import logging
 import socket
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from urllib.parse import urlparse
 
 import httpx
@@ -48,9 +48,9 @@ def _validate_url(url: str) -> str:
     try:
         ip = socket.gethostbyname(hostname)
         if _is_private(ip):
-            raise ValueError(f"Private/internal IP addresses not allowed")
-    except socket.gaierror:
-        raise ValueError(f"Could not resolve hostname: {hostname}")
+            raise ValueError("Private/internal IP addresses not allowed")
+    except socket.gaierror as exc:
+        raise ValueError(f"Could not resolve hostname: {hostname}") from exc
     return url
 
 
@@ -105,7 +105,7 @@ async def fetch_url(url: str) -> dict:
             "title": title,
             "text": text,
             "word_count": len(text.split()),
-            "fetched_at": datetime.now(timezone.utc).isoformat(),
+            "fetched_at": datetime.now(UTC).isoformat(),
         }
 
     except httpx.TimeoutException:

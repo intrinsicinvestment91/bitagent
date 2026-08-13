@@ -1,5 +1,4 @@
 import logging
-from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
@@ -18,8 +17,8 @@ SERVICE_ID = "search.query"
 class SearchRequest(BaseModel):
     query: str = Field(min_length=1, max_length=500)
     num_results: int = Field(default=10, ge=1, le=50)
-    payment_hash: Optional[str] = None
-    ecash_notes: Optional[str] = None
+    payment_hash: str | None = None
+    ecash_notes: str | None = None
 
 
 @router.get("/info")

@@ -6,21 +6,97 @@ on:
   pull_request:
     branches: [main]
 
-jobs:
-  test:
-    runs-on: ubuntu-latest
+env:
+  # Tests must never reach a real wallet. This also exercises the config path
+  # that allows a node to run without LNbits credentials.
+  PAYMENTS_ENABLED: "false"
 
+jobs:
+  lint:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: pip
+      - run: pip install ruff==0.14.5
+      - run: ruff check --output-format=github .
+      - run: ruff format --check .
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements.txt -r requirements-dev.txt
 
+      # The whole tests/ tree runs now. It used to enumerate three
+      # subdirectories to skip root-level files that were executable scripts
+      # rather than tests; those have been removed or moved to scripts/.
+      # No -x: one failure should not hide every subsequent one.
       - name: Run tests
-        timeout-minutes: 5
-        run: pytest tests/agents/ tests/integration/ tests/security/ -v --tb=short -x
+        timeout-minutes: 10
+        run: pytest tests/ -v --tb=short
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t bitagent:ci .
+      - name: Boot the container and check /health
+        run: |
+          docker run -d --name bitagent-ci \
+            -e PAYMENTS_ENABLED=false \
+            -p 8000:8000 bitagent:ci
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8000/health; then
+              echo "\nhealthy after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Container did not become healthy:"
+          docker logs bitagent-ci
+          exit 1
+      - name: Stop the container
+        if: always()
+        run: docker rm -f bitagent-ci || true
+
+  refuse-misconfigured-start:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+
+      # A node with no LNbits credentials and no explicit opt-out must refuse to
+      # start rather than come up serving every paid service for free.
+      - name: Starting without payment configuration must fail
+        env:
+          PAYMENTS_ENABLED: ""
+        run: |
+          if python -c "import main" 2>err.log; then
+            echo "FAIL: the app started with no payment configuration"
+            exit 1
+          fi
+          grep -q "Refusing to start" err.log || {
+            echo "FAIL: expected a clear refusal message, got:"; cat err.log; exit 1;
+          }
+          echo "OK: refused to start, with a clear reason"

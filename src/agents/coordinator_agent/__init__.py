@@ -14,7 +14,6 @@ import binascii
 import logging
 import os
 import tempfile
-from typing import Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
@@ -53,8 +52,8 @@ async def get_services():
 async def translate_audio(
     audio: UploadFile = File(...),
     target_language: str = Form(default="en"),
-    payment_hash: Optional[str] = Form(default=None),
-    ecash_notes: Optional[str] = Form(default=None),
+    payment_hash: str | None = Form(default=None),
+    ecash_notes: str | None = Form(default=None),
 ):
     """Transcribe an audio file via PolyglotAgent, then translate the result."""
     outcome = await require_payment(

@@ -43,7 +43,7 @@ class StreamfinderAgent:
     def load_config(self, path):
         if path:
             try:
-                with open(path, "r") as f:
+                with open(path) as f:
                     return json.load(f)
             except OSError as e:
                 logging.warning("Could not load config from %s: %s", path, e)
@@ -81,8 +81,5 @@ class StreamfinderAgent:
         if matches:
             result["results"] = matches
         else:
-            result["message"] = (
-                "No matching title in the demo dataset "
-                f"({', '.join(DEMO_TITLES)})."
-            )
+            result["message"] = f"No matching title in the demo dataset ({', '.join(DEMO_TITLES)})."
         return result

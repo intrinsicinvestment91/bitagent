@@ -194,9 +194,12 @@ async def handle_a2a_request(method: str, params: dict) -> dict:
             payment_hash=params.get("payment_hash"),
         )
 
-    if method.startswith("identity.") and os.getenv(
-        "IDENTITY_FREE_QUERIES", "false"
-    ).lower() in {"1", "true", "yes", "on"}:
+    if method.startswith("identity.") and os.getenv("IDENTITY_FREE_QUERIES", "false").lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }:
         return await dispatch_service(method, params)
 
     try:

@@ -1,5 +1,4 @@
 import logging
-from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
@@ -17,8 +16,8 @@ SERVICE_ID = "fetch.url"
 
 class FetchRequest(BaseModel):
     url: str = Field(min_length=1, max_length=2048)
-    payment_hash: Optional[str] = None
-    ecash_notes: Optional[str] = None
+    payment_hash: str | None = None
+    ecash_notes: str | None = None
 
 
 @router.get("/info")

@@ -1,5 +1,6 @@
-import os
 import logging
+import os
+
 import httpx
 
 from src.payments import price_of
@@ -21,11 +22,13 @@ async def _search_brave(query: str, count: int) -> list[dict]:
         data = r.json()
         results = []
         for item in data.get("web", {}).get("results", []):
-            results.append({
-                "title": item.get("title", ""),
-                "url": item.get("url", ""),
-                "snippet": item.get("description", ""),
-            })
+            results.append(
+                {
+                    "title": item.get("title", ""),
+                    "url": item.get("url", ""),
+                    "snippet": item.get("description", ""),
+                }
+            )
         return results
 
 
@@ -38,16 +41,19 @@ async def _search_searxng(query: str, count: int) -> list[dict]:
         data = r.json()
         results = []
         for item in data.get("results", [])[:count]:
-            results.append({
-                "title": item.get("title", ""),
-                "url": item.get("url", ""),
-                "snippet": item.get("content", ""),
-            })
+            results.append(
+                {
+                    "title": item.get("title", ""),
+                    "url": item.get("url", ""),
+                    "snippet": item.get("content", ""),
+                }
+            )
         return results
 
 
 async def _search_duckduckgo(query: str, count: int) -> list[dict]:
     import asyncio
+
     from ddgs import DDGS
 
     def _run():

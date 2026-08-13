@@ -10,7 +10,7 @@ import logging
 import os
 import time
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
@@ -40,6 +40,7 @@ from src.payments import (
     catalog_info,
     configure_gate,
     data_dir,
+    get_gate,
     load_config,
 )
 from src.security.admin_auth import admin_enabled, require_admin
@@ -197,9 +198,7 @@ async def lifespan(app: FastAPI):
 
     payment_ledger = PaymentLedger(data_dir() / "payments.db")
     if payment_config.enabled:
-        lnbits_client = AsyncLNbitsClient(
-            payment_config.lnbits_url, payment_config.lnbits_api_key
-        )
+        lnbits_client = AsyncLNbitsClient(payment_config.lnbits_url, payment_config.lnbits_api_key)
         logger.info("Payments enforced via LNbits at %s", payment_config.lnbits_url)
     else:
         lnbits_client = None
@@ -314,16 +313,26 @@ async def health():
     Reports whether the pieces that matter actually work, rather than returning
     a static literal — a node with an unreachable wallet used to report healthy.
     """
-    ledger_ok = payment_ledger.healthy() if payment_ledger else False
-    status = "healthy" if ledger_ok else "degraded"
+    # Read through the gate rather than the module-level config so /health can
+    # never disagree with what the running gate actually enforces.
+    try:
+        gate = get_gate()
+        config, ledger = gate.config, gate.ledger
+    except RuntimeError:
+        return JSONResponse(
+            status_code=503,
+            content={"status": "starting", "version": __version__, "payments": "unknown"},
+        )
+
+    ledger_ok = ledger.healthy() if ledger else False
 
     payload = {
-        "status": status,
+        "status": "healthy" if ledger_ok else "degraded",
         "version": __version__,
-        "payments": payment_config.describe(),
+        "payments": config.describe(),
         "ledger": "ok" if ledger_ok else "unavailable",
     }
-    if not payment_config.enabled:
+    if not config.enabled:
         payload["notice"] = "Payments are disabled on this node; all services are free."
     return JSONResponse(status_code=200 if ledger_ok else 503, content=payload)
 
@@ -334,7 +343,15 @@ async def root():
         "name": "BitAgent",
         "version": __version__,
         "payments": payment_config.describe(),
-        "agents": ["polyglot", "coordinator", "oracle", "fetch", "search", "streamfinder", "identity"],
+        "agents": [
+            "polyglot",
+            "coordinator",
+            "oracle",
+            "fetch",
+            "search",
+            "streamfinder",
+            "identity",
+        ],
         "services": "/services",
         "docs": "/docs",
     }
@@ -343,7 +360,7 @@ async def root():
 @app.get("/services")
 async def services():
     """Every billable surface with its current price and availability."""
-    return {"payments": payment_config.describe(), "services": catalog_info()}
+    return {"payments": get_gate().config.describe(), "services": catalog_info()}
 
 
 def _is_not_expired(expires_at: str | None) -> bool:
@@ -354,8 +371,8 @@ def _is_not_expired(expires_at: str | None) -> bool:
     except ValueError:
         return True
     if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed >= datetime.now(timezone.utc)
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed >= datetime.now(UTC)
 
 
 @app.get("/.well-known/nostr.json")
@@ -419,7 +436,9 @@ async def a2a_endpoint(request: Request):
     params = body.get("params") or {}
 
     if not isinstance(method, str) or not method:
-        return _rpc_error(JSONRPC_INVALID_REQUEST, "Invalid request: 'method' is required", request_id)
+        return _rpc_error(
+            JSONRPC_INVALID_REQUEST, "Invalid request: 'method' is required", request_id
+        )
     if not isinstance(params, dict):
         return _rpc_error(JSONRPC_INVALID_PARAMS, "Invalid params: expected an object", request_id)
 
@@ -468,7 +487,15 @@ async def agents_status():
 
     return {
         name: entry(name)
-        for name in ("polyglot", "coordinator", "oracle", "fetch", "search", "streamfinder", "identity")
+        for name in (
+            "polyglot",
+            "coordinator",
+            "oracle",
+            "fetch",
+            "search",
+            "streamfinder",
+            "identity",
+        )
     }
 
 

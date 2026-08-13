@@ -65,9 +65,7 @@ class FakeLNbits:
         amount = self.reported_amount
         if amount is None:
             amount = invoice.amount_sats if invoice else 0
-        return PaymentRecord(
-            PaymentState.PAID, amount_sats=amount, incoming=not self.outgoing
-        )
+        return PaymentRecord(PaymentState.PAID, amount_sats=amount, incoming=not self.outgoing)
 
     async def get_balance_sats(self) -> int:
         return self.balance_sats

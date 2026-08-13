@@ -1,21 +1,23 @@
 import logging
 import re
 import sqlite3
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from src.agents.base_agent import BaseAgent
 from src.agents.identity_agent.store import (
     create_pending_identity,
-    get_identity_metadata,
-    get_identity_by_pubkey,
     get_identity_by_handle,
+    get_identity_by_pubkey,
+    get_identity_metadata,
     init_db,
-    list_verified as store_list_verified,
     mark_paid_and_verified,
     reclaim_expired_pending,
     search_identities,
     upsert_identity_metadata,
+)
+from src.agents.identity_agent.store import (
+    list_verified as store_list_verified,
 )
 from src.agents.identity_agent.trust import calculate_trust_score
 from src.payments import Quote, pricing_for, require_payment
@@ -29,8 +31,10 @@ REGISTRATION_VALIDITY_DAYS = 365
 
 #: NIP-05 local parts are restricted to a-z0-9-_. by the spec.
 _HANDLE_RE = re.compile(r"^[a-z0-9\-_.]{1,64}$")
-_DOMAIN_RE = re.compile(r"^(?=.{1,253}$)[a-z0-9]([a-z0-9\-]{0,61}[a-z0-9])?"
-                        r"(\.[a-z0-9]([a-z0-9\-]{0,61}[a-z0-9])?)+$")
+_DOMAIN_RE = re.compile(
+    r"^(?=.{1,253}$)[a-z0-9]([a-z0-9\-]{0,61}[a-z0-9])?"
+    r"(\.[a-z0-9]([a-z0-9\-]{0,61}[a-z0-9])?)+$"
+)
 _PUBKEY_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
@@ -48,8 +52,8 @@ class IdentityAgent(BaseAgent):
         except ValueError:
             return True
         if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=timezone.utc)
-        return parsed >= datetime.now(timezone.utc)
+            parsed = parsed.replace(tzinfo=UTC)
+        return parsed >= datetime.now(UTC)
 
     def __init__(self, **kwargs: Any):
         super().__init__(name="IdentityAgent", role="identity_service")
@@ -126,9 +130,7 @@ class IdentityAgent(BaseAgent):
         if isinstance(outcome, Quote):
             return dict(outcome.body)
 
-        expires_at = (
-            datetime.now(timezone.utc) + timedelta(days=REGISTRATION_VALIDITY_DAYS)
-        ).isoformat()
+        expires_at = (datetime.now(UTC) + timedelta(days=REGISTRATION_VALIDITY_DAYS)).isoformat()
         mark_paid_and_verified(
             pubkey, payment_hash=payment_hash, expires_at=expires_at, db_path=self.db_path
         )
@@ -202,9 +204,7 @@ class IdentityAgent(BaseAgent):
         self, pubkey: str, handle: str, domain: str, relays: list[str] | None
     ) -> dict[str, Any]:
         """Complete a registration on a node running with payments disabled."""
-        expires_at = (
-            datetime.now(timezone.utc) + timedelta(days=REGISTRATION_VALIDITY_DAYS)
-        ).isoformat()
+        expires_at = (datetime.now(UTC) + timedelta(days=REGISTRATION_VALIDITY_DAYS)).isoformat()
         try:
             create_pending_identity(
                 pubkey=pubkey,
@@ -220,7 +220,10 @@ class IdentityAgent(BaseAgent):
 
         mark_paid_and_verified(pubkey, payment_hash="", db_path=self.db_path)
         upsert_identity_metadata(
-            pubkey=pubkey, category="unclassified", tags=[], trust_score=0.0,
+            pubkey=pubkey,
+            category="unclassified",
+            tags=[],
+            trust_score=0.0,
             db_path=self.db_path,
         )
         record = get_identity_by_pubkey(pubkey, db_path=self.db_path)

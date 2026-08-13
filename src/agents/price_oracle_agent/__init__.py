@@ -1,5 +1,4 @@
 import logging
-from typing import Optional
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
@@ -17,14 +16,14 @@ MAX_COINS = 10
 
 class ConvertRequest(BaseModel):
     sats: int = Field(ge=0)
-    payment_hash: Optional[str] = None
-    ecash_notes: Optional[str] = None
+    payment_hash: str | None = None
+    ecash_notes: str | None = None
 
 
 class BatchRequest(BaseModel):
     coins: list[str] = Field(min_length=1, max_length=MAX_COINS)
-    payment_hash: Optional[str] = None
-    ecash_notes: Optional[str] = None
+    payment_hash: str | None = None
+    ecash_notes: str | None = None
 
 
 @router.get("/info")
@@ -33,7 +32,7 @@ async def info():
 
 
 @router.get("/price/{coin}")
-async def price_single(coin: str, payment_hash: Optional[str] = None):
+async def price_single(coin: str, payment_hash: str | None = None):
     outcome = await require_payment("oracle.price", payment_hash, memo=f"Price: {coin}")
     if isinstance(outcome, Quote):
         return JSONResponse(status_code=outcome.status_code, content=outcome.body)

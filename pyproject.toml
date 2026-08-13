@@ -1,0 +1,41 @@
+[project]
+name = "bitagent"
+version = "1.0.0"
+description = "Payment rails for AI agents — Bitcoin Lightning, built in."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+
+[project.urls]
+Homepage = "https://github.com/intrinsicinvestment91/bitagent"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+exclude = [".venv", "scripts/procedures", "data"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "I",   # import sorting
+    "UP",  # pyupgrade
+    "B",   # bugbear
+    "C4",  # comprehensions
+]
+ignore = [
+    "E501",  # line length is enforced by the formatter, not the linter
+    "B008",  # FastAPI's Depends()/File() defaults are the framework's idiom
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests deliberately reach into internals to set up state.
+"tests/*" = ["B011", "B017"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "-q"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]

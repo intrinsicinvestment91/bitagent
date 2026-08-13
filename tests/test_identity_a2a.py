@@ -12,8 +12,8 @@ from fastapi.testclient import TestClient
 
 import main
 from src.agents.identity_agent import store
-from src.payments import configure_gate
 from src.agents.identity_agent.store import upsert_identity_metadata
+from src.payments import configure_gate
 
 PUBKEY = "a" * 64
 JSONRPC_PAYMENT_REQUIRED = -32000
@@ -97,9 +97,10 @@ class TestPaidQueries:
         )
 
         with patch.dict("os.environ", {"IDENTITY_FREE_QUERIES": "true"}, clear=False):
-            assert rpc(client, "identity.get_identity", {"pubkey": PUBKEY}).json()["result"][
-                "pubkey"
-            ] == PUBKEY
+            assert (
+                rpc(client, "identity.get_identity", {"pubkey": PUBKEY}).json()["result"]["pubkey"]
+                == PUBKEY
+            )
             assert rpc(client, "identity.list_verified").json()["result"]["count"] >= 1
             assert rpc(client, "identity.search", {"query": "alice"}).json()["result"]["count"] >= 1
             trust = rpc(client, "identity.get_trust_signal", {"pubkey": PUBKEY}).json()

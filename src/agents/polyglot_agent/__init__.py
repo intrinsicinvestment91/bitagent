@@ -1,7 +1,6 @@
 import logging
 import os
 import tempfile
-from typing import Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
@@ -61,8 +60,8 @@ async def translate(body: TranslationRequest):
 @router.post("/transcribe")
 async def transcribe(
     audio: UploadFile = File(...),
-    payment_hash: Optional[str] = Form(default=None),
-    ecash_notes: Optional[str] = Form(default=None),
+    payment_hash: str | None = Form(default=None),
+    ecash_notes: str | None = Form(default=None),
 ):
     outcome = await require_payment(
         "polyglot.transcribe", payment_hash, ecash_notes, memo="Audio transcription"
