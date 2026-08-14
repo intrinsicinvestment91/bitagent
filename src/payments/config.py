@@ -77,9 +77,7 @@ def load_config() -> PaymentConfig:
 
     if not configured:
         missing = [
-            name
-            for name, value in (("LNBITS_URL", url), ("LNBITS_API_KEY", key))
-            if not value
+            name for name, value in (("LNBITS_URL", url), ("LNBITS_API_KEY", key)) if not value
         ]
         verb = "is" if len(missing) == 1 else "are"
         raise PaymentConfigError(
