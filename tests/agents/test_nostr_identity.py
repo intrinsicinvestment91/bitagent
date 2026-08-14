@@ -13,10 +13,11 @@ import asyncio
 import json
 import logging
 import time
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import patch, AsyncMock, MagicMock
-from nostr.key import PrivateKey
 from nostr.filter import Filter, Filters
+from nostr.key import PrivateKey
 
 import src.network.p2p_discovery as pd_module
 
@@ -142,6 +143,7 @@ class TestWsPublish:
 # Helpers shared by TestWsQuery and TestQueryEvents
 # ---------------------------------------------------------------------------
 
+
 def _raw_event(agent_id: str = "agent-1") -> dict:
     return {
         "pubkey": "aa" * 32,
@@ -161,6 +163,7 @@ def _make_filters() -> Filters:
 # _ws_query unit tests
 # ---------------------------------------------------------------------------
 
+
 class TestWsQuery:
     """_ws_query collects EVENT messages and stops on EOSE or timeout."""
 
@@ -174,8 +177,8 @@ class TestWsQuery:
         async def fake_receive_str(timeout=None):
             try:
                 return next(msg_iter)
-            except StopIteration:
-                raise asyncio.TimeoutError
+            except StopIteration as exc:
+                raise TimeoutError from exc
 
         mock_ws = AsyncMock()
         mock_ws.receive_str = fake_receive_str
@@ -244,7 +247,9 @@ class TestWsQuery:
         assert results == []
 
     def test_connection_failure_returns_empty(self):
-        with patch("src.network.p2p_discovery.aiohttp.ClientSession", side_effect=OSError("refused")):
+        with patch(
+            "src.network.p2p_discovery.aiohttp.ClientSession", side_effect=OSError("refused")
+        ):
             result = asyncio.run(pd_module._ws_query("wss://dead.relay", '["REQ","s",{}]', "s"))
         assert result == []
 
@@ -252,6 +257,7 @@ class TestWsQuery:
 # ---------------------------------------------------------------------------
 # _query_events integration tests
 # ---------------------------------------------------------------------------
+
 
 class TestQueryEvents:
     """_query_events aggregates results from all relays via _ws_query."""
@@ -300,6 +306,7 @@ class TestQueryEvents:
 
     def test_malformed_event_dict_skipped(self):
         """A raw event with bad fields should be dropped, not crash the method."""
+
         async def bad_query(url, req_msg, sub_id, per_relay_timeout=5.0):
             return [{"this": "is", "not": "a valid event"}]
 

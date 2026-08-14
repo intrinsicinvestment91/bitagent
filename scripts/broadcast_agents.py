@@ -1,13 +1,13 @@
 # broadcast_agents.py
 
-import time
-import json
 import asyncio
-from nostr.event import Event, EventKind
+import json
+import time
+
+from nostr.event import Event
 from nostr.key import PrivateKey
-from nostr.relay_manager import RelayManager
 from nostr.message_type import ClientMessageType
-from nostr.filter import Filter, Filters
+from nostr.relay_manager import RelayManager
 
 # === Replace this with your persistent private key ===
 # Generate one at: https://damus.io/key/
@@ -19,29 +19,24 @@ AGENTS = [
         "name": "PolyglotAgent",
         "description": "Translate and transcribe audio using LNbits",
         "endpoint": "http://localhost:8000/polyglot",
-        "services": ["translate", "transcribe"]
+        "services": ["translate", "transcribe"],
     },
     {
-        "name": "CoordinatorAgent", 
+        "name": "CoordinatorAgent",
         "description": "Chains tasks between agents (e.g. translate_audio pipeline)",
         "endpoint": "http://localhost:8000/coordinator",
-        "services": ["translate_audio", "chain_tasks"]
+        "services": ["translate_audio", "chain_tasks"],
     },
     {
         "name": "StreamfinderAgent",
         "description": "Find streaming platforms for movies and TV shows",
         "endpoint": "http://localhost:8000",
-        "services": ["streamfinder.search"]
-    }
+        "services": ["streamfinder.search"],
+    },
 ]
 
 # Recommended: create your own relay list
-RELAYS = [
-    "wss://relay.damus.io",
-    "wss://relay.snort.social",
-    "wss://nos.lol",
-    "wss://nostr.wine"
-]
+RELAYS = ["wss://relay.damus.io", "wss://relay.snort.social", "wss://nos.lol", "wss://nostr.wine"]
 
 
 async def broadcast_agent(agent_info, privkey_hex):
@@ -54,13 +49,13 @@ async def broadcast_agent(agent_info, privkey_hex):
         "endpoint": agent_info["endpoint"],
         "services": agent_info["services"],
         "pubkey": pubkey,
-        "timestamp": int(time.time())
+        "timestamp": int(time.time()),
     }
 
     event = Event(
         pubkey=pubkey,
         kind=30078,  # Custom agent announcement kind
-        content=json.dumps(content)
+        content=json.dumps(content),
     )
     privkey.sign_event(event)
 

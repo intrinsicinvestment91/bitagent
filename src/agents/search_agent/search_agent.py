@@ -1,6 +1,9 @@
-import os
 import logging
+import os
+
 import httpx
+
+from src.payments import price_of
 
 logger = logging.getLogger(__name__)
 
@@ -19,11 +22,13 @@ async def _search_brave(query: str, count: int) -> list[dict]:
         data = r.json()
         results = []
         for item in data.get("web", {}).get("results", []):
-            results.append({
-                "title": item.get("title", ""),
-                "url": item.get("url", ""),
-                "snippet": item.get("description", ""),
-            })
+            results.append(
+                {
+                    "title": item.get("title", ""),
+                    "url": item.get("url", ""),
+                    "snippet": item.get("description", ""),
+                }
+            )
         return results
 
 
@@ -36,16 +41,19 @@ async def _search_searxng(query: str, count: int) -> list[dict]:
         data = r.json()
         results = []
         for item in data.get("results", [])[:count]:
-            results.append({
-                "title": item.get("title", ""),
-                "url": item.get("url", ""),
-                "snippet": item.get("content", ""),
-            })
+            results.append(
+                {
+                    "title": item.get("title", ""),
+                    "url": item.get("url", ""),
+                    "snippet": item.get("content", ""),
+                }
+            )
         return results
 
 
 async def _search_duckduckgo(query: str, count: int) -> list[dict]:
     import asyncio
+
     from ddgs import DDGS
 
     def _run():
@@ -94,7 +102,11 @@ async def search(query: str, num_results: int = 10) -> dict:
 class SearchAgent:
     name = "SearchAgent"
     description = "Web search. Returns titles, URLs, and snippets."
-    price_sats = 10
+
+    @property
+    def price_sats(self) -> int:
+        """Price from the shared catalog — the single source of truth."""
+        return price_of("search.query")
 
     def get_info(self) -> dict:
         backend = "duckduckgo"

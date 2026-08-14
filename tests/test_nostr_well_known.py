@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -52,7 +52,7 @@ class TestNostrWellKnown:
         assert response.json() == {"names": {}}
 
     def test_expired_identity_does_not_resolve(self):
-        expired_at = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+        expired_at = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
         create_pending_identity(
             pubkey="pubkey_expired",
             handle="carol",

@@ -1,37 +1,39 @@
-# Core dependencies
-fastapi
-uvicorn
-aiohttp
-python-multipart
+# Runtime dependencies. Pinned exactly so a deploy is reproducible.
+# Development and test tooling lives in requirements-dev.txt.
 
-# LNbits integration
-requests
-cryptography
-python-dotenv
+# Web framework
+fastapi==0.141.1
+uvicorn==0.52.3
+python-multipart==0.0.32
+pydantic==2.13.4
 
-# Language services
-deep-translator
-beautifulsoup4
-ddgs
-# openai-whisper and ffmpeg-python excluded from cloud deploy (pulls PyTorch ~2GB)
-# Install locally if you need transcription: pip install openai-whisper ffmpeg-python
+# HTTP clients
+# httpx is a runtime dependency: the LNbits client, search agent, web fetch
+# agent and Fedimint wallet all use it.
+httpx==0.28.1
+aiohttp==3.14.3
+requests==2.34.2
 
-# Nostr discovery (via GitHub)
-git+https://github.com/jeffthibault/python-nostr.git
+# Configuration and crypto
+python-dotenv==1.2.2
+cryptography==50.0.0
+PyJWT==2.13.0
 
-# Enhanced security and monitoring
-PyJWT
-psutil
-jsonschema
-pydantic
+# Language and search services
+deep-translator==1.11.4
+beautifulsoup4==4.15.0
+ddgs==9.14.4
+# openai-whisper and ffmpeg-python are excluded from the cloud image: they pull
+# ~2GB of PyTorch. Without them, polyglot.transcribe reports itself unavailable
+# and is not charged for. Install locally to enable it:
+#   pip install openai-whisper ffmpeg-python
 
-# MCP (Model Context Protocol)
-mcp
+# Monitoring
+psutil==7.2.2
 
-# Testing utilities
-httpx
-pytest
-pytest-asyncio
-pytest-mock
+# Nostr discovery. Pinned to a commit: this is an unmaintained VCS dependency,
+# and an unpinned upstream change has broken CI before.
+nostr @ git+https://github.com/jeffthibault/python-nostr.git@37cb66ba2d3968b2d75cc8ad71c3550415ca47fe
 
-# Security dependencies (cryptography already listed above; secrets/hashlib are stdlib)
+# MCP server (mcp_server.py exposes agents as Claude tools)
+mcp==2.0.0

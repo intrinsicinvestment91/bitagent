@@ -3,8 +3,13 @@ builder = "dockerfile"
 dockerfilePath = "Dockerfile"
 
 [deploy]
-startCommand = "python main.py"
+# Leave startCommand unset so the image's own ENTRYPOINT runs. It prepares the
+# data directory and starts uvicorn with proxy headers enabled, which the rate
+# limiter needs to see the real client address behind Railway's proxy.
 healthcheckPath = "/health"
 healthcheckTimeout = 300
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 10
+
+# Mount a volume at /data. BITAGENT_DATA_DIR defaults there, and it holds the
+# payment ledger -- if it is lost, previously settled payments become replayable.

@@ -1,5 +1,6 @@
 import uuid
 
+
 class DIDIdentity:
     def __init__(self, method: str = "example"):
         self.method = method

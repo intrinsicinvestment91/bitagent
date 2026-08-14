@@ -1,10 +1,27 @@
-pycache/
+# Python
+__pycache__/
 *.pyc
+*.pyo
+.pytest_cache/
+.ruff_cache/
+
+# Environments
 .env
-*.log
-config.py
-.env
+.env.*
+!.env.example
 venv/
+.venv/
+env/
+
+# Secrets and local config
+# Scoped to the repository root: a bare `config.py` pattern also matched
+# src/payments/config.py, which silently kept it out of every clone.
+/config.py
+api_keys.json
+
+# Runtime data — the payment ledger and identity database live here
+data/
+*.log
 
 # Build/package artifacts
 bitagent.s9pk

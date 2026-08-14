@@ -1,9 +1,11 @@
 import uuid
+
 from src.identity.did import DIDIdentity
 
 
 class _SimWallet:
     """Minimal in-memory wallet for agent identity/simulation use only. Not for real payments."""
+
     def __init__(self):
         self._balance = 0
         self._tokens = []
@@ -13,7 +15,12 @@ class _SimWallet:
 
     def mint_token(self, amount_sat: int, recipient: str) -> dict:
         self._balance -= amount_sat
-        return {"token_id": str(uuid.uuid4()), "amount_sat": amount_sat, "recipient": recipient, "redeemed": False}
+        return {
+            "token_id": str(uuid.uuid4()),
+            "amount_sat": amount_sat,
+            "recipient": recipient,
+            "redeemed": False,
+        }
 
     def redeem_token(self, token: dict) -> bool:
         if not token.get("redeemed"):
@@ -41,11 +48,7 @@ class BaseAgent:
         return self.did_identity.did
 
     def identify(self) -> dict:
-        return {
-            "name": self.name,
-            "role": self.role,
-            "did": self.id
-        }
+        return {"name": self.name, "role": self.role, "did": self.id}
 
     def balance(self) -> int:
         return self.wallet.get_balance()

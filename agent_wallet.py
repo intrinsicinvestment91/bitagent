@@ -1,6 +1,24 @@
-from lnbits_client import LNbitsClient
-from dotenv import load_dotenv
+"""LEGACY — Start9 deployment only. Do not use for new code.
+
+The synchronous, unbounded-timeout LNbits access here is exactly what
+``src/payments/lnbits.py`` was written to replace: calling it from an async
+handler blocks the event loop, and it cannot distinguish "not paid" from
+"could not reach the wallet", which is how payment checks used to fail open.
+
+It survives because ``start9_server.py`` and ``scripts/start9_payment_integration.py``
+still import it and the Start9 packaging is preserved as-is. Every cloud path
+(``main.py``) goes through ``src.payments`` instead.
+
+Nothing here enforces single use: a payment hash validated by this client can be
+replayed indefinitely. The Start9 server carries that limitation until it is
+migrated onto the payment gate.
+"""
+
 import os
+
+from dotenv import load_dotenv
+
+from lnbits_client import LNbitsClient
 
 load_dotenv()
 

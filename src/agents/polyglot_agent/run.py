@@ -2,12 +2,13 @@
 
 import uvicorn
 from fastapi import FastAPI
+
 from src.agents.polyglot_agent import router as polyglot_router
 
 app = FastAPI(
     title="PolyglotAgent",
     description="Translation and transcription agent using LNbits payment gating.",
-    version="0.1.0"
+    version="0.1.0",
 )
 
 # Include routes from __init__.py

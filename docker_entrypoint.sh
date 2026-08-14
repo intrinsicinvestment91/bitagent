@@ -1,9 +1,15 @@
 #!/bin/sh
 set -e
 
-mkdir -p /data
+# The payment ledger and identity store live here. In production this must be a
+# mounted volume: if the ledger is lost, every previously settled payment hash
+# becomes replayable.
+DATA_DIR="${BITAGENT_DATA_DIR:-/data}"
+mkdir -p "$DATA_DIR"
 
-# Ensure DATABASE_URL points to the persistent data volume
-export DATABASE_URL="${DATABASE_URL:-sqlite:////data/bitagent.db}"
-
-exec uvicorn main:app --host 0.0.0.0 --port 8000
+exec uvicorn main:app \
+    --host "${HOST:-0.0.0.0}" \
+    --port "${PORT:-8000}" \
+    --workers "${WEB_CONCURRENCY:-1}" \
+    --proxy-headers \
+    --forwarded-allow-ips '*'

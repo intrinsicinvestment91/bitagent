@@ -1,15 +1,24 @@
 import json
 import sqlite3
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from src.payments.config import data_dir
 
-DB_PATH = Path("data/identity_agent.db")
+#: Resolved from BITAGENT_DATA_DIR so registrations survive a container restart.
+#: This used to be a bare relative path, which put the database in the working
+#: directory — outside the mounted volume — so every paid NIP-05 registration was
+#: lost on redeploy.
+DB_PATH = data_dir() / "identity_agent.db"
+
+#: Search returns at most this many rows; the query is four unanchored LIKEs and
+#: was previously unbounded.
+SEARCH_LIMIT = 100
 
 
 def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _connect(db_path: str | Path | None = None) -> sqlite3.Connection:
@@ -52,7 +61,41 @@ def init_db(db_path: str | Path | None = None) -> None:
             )
             """
         )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_identities_pubkey ON identities(pubkey)")
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_identities_handle ON identities(handle, domain)"
+        )
+        # Added after the initial schema: deadline for an unpaid registration to
+        # be settled, distinct from expires_at (the NIP-05 registration's own
+        # validity period).
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(identities)")}
+        if "quote_expires_at" not in columns:
+            conn.execute("ALTER TABLE identities ADD COLUMN quote_expires_at TEXT")
         conn.commit()
+
+
+def reclaim_expired_pending(handle: str, domain: str, db_path: str | Path | None = None) -> bool:
+    """Free a handle held by an unpaid registration whose invoice has expired.
+
+    Registration inserts a pending row *before* payment, and the UNIQUE(handle,
+    domain) constraint then rejects anyone else. Without this, an attacker could
+    squat every handle on the node for free by requesting invoices and never
+    paying them.
+    """
+    init_db(db_path)
+    now = _utc_now_iso()
+    with _connect(db_path) as conn:
+        cursor = conn.execute(
+            """
+            DELETE FROM identities
+             WHERE handle = ? AND domain = ?
+               AND paid = 0 AND verified = 0
+               AND quote_expires_at IS NOT NULL AND quote_expires_at <= ?
+            """,
+            (handle, domain, now),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
 
 
 def create_pending_identity(
@@ -62,6 +105,7 @@ def create_pending_identity(
     payment_hash: str,
     relays: list[str] | None = None,
     expires_at: str | None = None,
+    quote_expires_at: str | None = None,
     db_path: str | Path | None = None,
 ) -> int:
     init_db(db_path)
@@ -72,26 +116,62 @@ def create_pending_identity(
         cursor = conn.execute(
             """
             INSERT INTO identities (
-                pubkey, handle, domain, nip05, paid, verified, created_at, expires_at, payment_hash, relays_json
-            ) VALUES (?, ?, ?, ?, 0, 0, ?, ?, ?, ?)
+                pubkey, handle, domain, nip05, paid, verified, created_at, expires_at,
+                quote_expires_at, payment_hash, relays_json
+            ) VALUES (?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?)
             """,
-            (pubkey, handle, domain, nip05, _utc_now_iso(), expires_at, payment_hash, relays_json),
+            (
+                pubkey,
+                handle,
+                domain,
+                nip05,
+                _utc_now_iso(),
+                expires_at,
+                quote_expires_at,
+                payment_hash,
+                relays_json,
+            ),
         )
         conn.commit()
         return int(cursor.lastrowid)
 
 
-def mark_paid_and_verified(pubkey: str, db_path: str | Path | None = None) -> bool:
+def mark_paid_and_verified(
+    pubkey: str,
+    payment_hash: str | None = None,
+    expires_at: str | None = None,
+    db_path: str | Path | None = None,
+) -> bool:
+    """Mark a registration paid and verified.
+
+    Pass ``payment_hash`` to scope the update to the specific registration it
+    settled. Without it, every row for the pubkey is updated, which would verify
+    unrelated pending registrations the same key had opened.
+    """
     init_db(db_path)
     with _connect(db_path) as conn:
-        cursor = conn.execute(
-            """
-            UPDATE identities
-            SET paid = 1, verified = 1
-            WHERE pubkey = ?
-            """,
-            (pubkey,),
-        )
+        if payment_hash is not None:
+            cursor = conn.execute(
+                """
+                UPDATE identities
+                   SET paid = 1, verified = 1,
+                       expires_at = COALESCE(?, expires_at),
+                       quote_expires_at = NULL
+                 WHERE pubkey = ? AND payment_hash = ?
+                """,
+                (expires_at, pubkey, payment_hash),
+            )
+        else:
+            cursor = conn.execute(
+                """
+                UPDATE identities
+                   SET paid = 1, verified = 1,
+                       expires_at = COALESCE(?, expires_at),
+                       quote_expires_at = NULL
+                 WHERE pubkey = ?
+                """,
+                (expires_at, pubkey),
+            )
         conn.commit()
         return cursor.rowcount > 0
 
@@ -113,7 +193,9 @@ def get_identity_by_pubkey(pubkey: str, db_path: str | Path | None = None) -> di
         return _identity_row_to_dict(row)
 
 
-def get_identity_by_handle(handle: str, domain: str, db_path: str | Path | None = None) -> dict[str, Any] | None:
+def get_identity_by_handle(
+    handle: str, domain: str, db_path: str | Path | None = None
+) -> dict[str, Any] | None:
     init_db(db_path)
     with _connect(db_path) as conn:
         row = conn.execute(
@@ -141,8 +223,9 @@ def search_identities(query: str, db_path: str | Path | None = None) -> list[dic
             SELECT * FROM identities
             WHERE pubkey LIKE ? OR handle LIKE ? OR domain LIKE ? OR nip05 LIKE ?
             ORDER BY verified DESC, created_at DESC
+            LIMIT ?
             """,
-            (q, q, q, q),
+            (q, q, q, q, SEARCH_LIMIT),
         ).fetchall()
         return [_identity_row_to_dict(row) for row in rows]
 

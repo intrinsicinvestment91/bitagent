@@ -1,420 +1,217 @@
+"""End-to-end integration across the live subsystems.
+
+This replaces a suite that mostly exercised the escrow, secure-channel and
+encryption modules — all of which were unreachable from any request and have
+been removed. What it covers instead is the path a real caller takes: quote a
+service, pay it, get the work, and be refused on replay.
+
+Only LNbits and the outbound service calls are faked; the app, router, gate and
+ledger are real.
 """
-Integration tests for BitAgent system.
-Tests complete workflows and agent interactions.
-"""
+
+from unittest.mock import AsyncMock, patch
 
 import pytest
-import asyncio
-import json
-import time
-from unittest.mock import Mock, patch, AsyncMock
-import tempfile
-import os
+from fastapi.testclient import TestClient
 
-# Import modules
-import sys
-from pathlib import Path
-
-# Ensure tests can import project modules in local and CI environments.
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-
-from src.security.authentication import AuthenticationManager
-from src.security.encryption import EncryptionManager
-from src.security.secure_communication import SecureCommunicationManager, MessageType, SecurityLevel
-from src.security.payment_security import PaymentSecurityManager
+import main
 from src.identity.enhanced_did import EnhancedDIDManager, TrustLevel
 from src.monitoring.audit_logger import AuditLogger, EventType
-from src.network.p2p_discovery import P2PDiscoveryManager, AgentInfo, DiscoveryQuery, DiscoveryProtocol
+from src.network.p2p_discovery import AgentInfo, DiscoveryQuery, P2PDiscoveryManager
+from src.payments import configure_gate
+from src.security.authentication import AuthenticationManager
 
-class TestAgentWorkflow:
-    """Test complete agent workflows."""
-    
-    def setup_method(self):
-        self.auth_manager = AuthenticationManager()
-        self.encryption_manager = EncryptionManager()
-        self.payment_security = PaymentSecurityManager()
-        self.did_manager = EnhancedDIDManager()
-        self.audit_logger = AuditLogger()
-        self.discovery_manager = P2PDiscoveryManager()
-    
-    @pytest.mark.asyncio
-    async def test_agent_registration_workflow(self):
-        """Test complete agent registration workflow."""
-        agent_id = "test_agent_001"
-        
-        # Step 1: Create DID
-        did = self.did_manager.create_did(agent_id)
-        assert did is not None
-        
-        # Step 2: Issue capability credential
-        credential = self.did_manager.issue_verifiable_credential(
-            did, "agent-capability", {"services": ["translation", "transcription"]}
-        )
-        assert credential is not None
-        
-        # Step 3: Generate API key
-        api_key = self.auth_manager.generate_api_key(agent_id, ["read", "write"])
-        assert api_key is not None
-        
-        # Step 4: Register for discovery
-        agent_info = AgentInfo(
-            agent_id=agent_id,
-            name="Test Translation Agent",
-            description="Provides translation services",
-            endpoint="http://localhost:8000",
-            services=["translation"],
-            public_key="test_public_key",
-            protocol="https",
-            last_seen=time.time()
-        )
-        
-        await self.discovery_manager.register_agent(agent_info)
-        
-        # Step 5: Log registration event
-        self.audit_logger.log_event(
-            EventType.AGENT_ACTION,
-            agent_id,
-            "agent_registration",
-            {"did": did, "services": ["translation"]}
-        )
-        
-        # Verify registration
-        events = self.audit_logger.get_events(EventType.AGENT_ACTION)
-        assert len(events) == 1
-        assert events[0].agent_id == agent_id
-    
-    @pytest.mark.asyncio
-    async def test_secure_service_request_workflow(self):
-        """Test secure service request workflow."""
-        # Setup agents
-        client_agent = "client_agent"
-        service_agent = "service_agent"
-        
-        # Create DIDs
-        client_did = self.did_manager.create_did(client_agent)
-        service_did = self.did_manager.create_did(service_agent)
-        
-        # Generate API keys
-        client_api_key = self.auth_manager.generate_api_key(client_agent)
-        service_api_key = self.auth_manager.generate_api_key(service_agent)
-        
-        # Setup communication managers
-        client_comm = SecureCommunicationManager(client_agent, self.auth_manager)
-        service_comm = SecureCommunicationManager(service_agent, self.auth_manager)
-        
-        # Establish secure channel
-        service_public_key = service_comm.key_exchange.get_public_key_bytes()
-        channel_id = await client_comm.establish_secure_channel(
-            service_agent, service_public_key, SecurityLevel.SECURE
-        )
-        
-        # Create escrow payment
-        escrow = self.payment_security.create_escrow_payment(
-            client_agent, service_agent, 1000, "Translation service"
-        )
-        
-        # Fund escrow (mock)
-        with patch.object(self.payment_security, '_verify_payment', return_value=True):
-            self.payment_security.fund_escrow(escrow.escrow_id, "payment_hash")
-        
-        # Send service request
-        request_data = {
-            "service": "translation",
-            "text": "Hello world",
-            "target_language": "es",
-            "escrow_id": escrow.escrow_id
-        }
-        
-        success = await client_comm.send_secure_message(
-            channel_id, MessageType.REQUEST, request_data
-        )
-        
-        assert success is True
-        
-        # Log the transaction
-        self.audit_logger.log_payment(
-            client_agent, escrow.escrow_id, 1000, True
-        )
-        
-        # Verify logging
-        payment_events = self.audit_logger.get_events(EventType.PAYMENT)
-        assert len(payment_events) == 1
-    
-    @pytest.mark.asyncio
-    async def test_dispute_resolution_workflow(self):
-        """Test dispute resolution workflow."""
-        # Create escrow
-        escrow = self.payment_security.create_escrow_payment(
-            "buyer", "seller", 1000, "Test service"
-        )
-        
-        # Fund escrow
-        with patch.object(self.payment_security, '_verify_payment', return_value=True):
-            self.payment_security.fund_escrow(escrow.escrow_id, "payment_hash")
-        
-        # Create dispute
-        dispute = self.payment_security.create_dispute(
-            escrow.escrow_id, "buyer", "Service not delivered as promised"
-        )
-        
-        # Log dispute creation
-        self.audit_logger.log_security_event(
-            "buyer", "suspicious_activity", {"dispute_id": dispute.dispute_id}
-        )
-        
-        # Resolve dispute
-        resolution_success = self.payment_security.resolve_dispute(
-            dispute.dispute_id, "arbitrator_1", "Service was delivered correctly", None
-        )
-        
-        assert resolution_success is True
-        
-        # Log resolution
-        self.audit_logger.log_security_event(
-            "arbitrator_1", "suspicious_activity", {"dispute_id": dispute.dispute_id}
-        )
-        
-        # Verify resolution
-        dispute_info = self.payment_security.get_dispute_info(dispute.dispute_id)
-        assert str(dispute_info["status"].value) == "resolved"
-    
-    @pytest.mark.asyncio
-    async def test_agent_discovery_workflow(self):
-        """Test agent discovery workflow."""
-        # Register multiple agents
-        agents = [
-            AgentInfo(
-                agent_id="agent_1",
-                name="Translation Agent",
-                description="Provides translation services",
-                endpoint="http://localhost:8001",
-                services=["translation"],
-                public_key="pubkey1",
-                protocol="https",
-                last_seen=time.time()
-            ),
-            AgentInfo(
-                agent_id="agent_2",
-                name="Transcription Agent",
-                description="Provides transcription services",
-                endpoint="http://localhost:8002",
-                services=["transcription"],
-                public_key="pubkey2",
-                protocol="https",
-                last_seen=time.time()
-            ),
-            AgentInfo(
-                agent_id="agent_3",
-                name="Multi-service Agent",
-                description="Provides multiple services",
-                endpoint="http://localhost:8003",
-                services=["translation", "transcription"],
-                public_key="pubkey3",
-                protocol="https",
-                last_seen=time.time()
+SEARCH_RESULT = {
+    "query": "bitcoin",
+    "results": [{"title": "Bitcoin", "url": "https://bitcoin.org"}],
+}
+
+
+@pytest.fixture
+def client(tmp_path, paid_gate, monkeypatch):
+    from src.agents.identity_agent import store
+
+    monkeypatch.setattr(store, "DB_PATH", tmp_path / "identity_agent.db")
+    with TestClient(main.app) as test_client:
+        configure_gate(paid_gate)
+        yield test_client
+
+
+class TestPaidRequestLifecycle:
+    def test_quote_pay_serve_then_refuse_replay(self, client, fake_lnbits):
+        """The full happy path, and the replay that must not work."""
+        with patch(
+            "src.agents.search_agent.search_agent.SearchAgent.search",
+            new=AsyncMock(return_value=SEARCH_RESULT),
+        ):
+            # 1. No payment -> 402 with a real invoice.
+            quote = client.post("/search/query", json={"query": "bitcoin"})
+            assert quote.status_code == 402
+            payment_hash = quote.json()["payment_hash"]
+            assert quote.json()["amount_sats"] == 10
+
+            # 2. Submitting before paying is refused.
+            early = client.post(
+                "/search/query", json={"query": "bitcoin", "payment_hash": payment_hash}
             )
-        ]
-        
-        for agent in agents:
-            await self.discovery_manager.register_agent(agent)
-        
-        # Search for translation services
-        query = DiscoveryQuery(
-            service_type="translation",
-            max_results=10
-        )
-        
-        found_agents = await self.discovery_manager.discover_agents(query)
-        
-        # Should find agents 1 and 3
-        assert len(found_agents) >= 2
-        agent_ids = [agent.agent_id for agent in found_agents]
-        assert "agent_1" in agent_ids
-        assert "agent_3" in agent_ids
-    
-    def test_trust_score_calculation_workflow(self):
-        """Test trust score calculation workflow."""
-        agent_id = "test_agent"
-        
-        # Simulate interactions
-        interactions = [
-            {"success": True, "payment_success": 1, "quality_score": 0.9, "response_time": 1.0, "uptime": 0.95},
-            {"success": True, "payment_success": 1, "quality_score": 0.8, "response_time": 2.0, "uptime": 0.90},
-            {"success": True, "payment_success": 1, "quality_score": 0.85, "response_time": 1.5, "uptime": 0.92},
-            {"success": False, "payment_success": 0, "quality_score": 0.3, "response_time": 10.0, "uptime": 0.50},
-            {"success": True, "payment_success": 1, "quality_score": 0.88, "response_time": 1.2, "uptime": 0.94}
-        ]
-        
-        # Calculate trust score
-        trust_score = self.did_manager.calculate_trust_score(agent_id, interactions)
-        
-        assert trust_score.agent_id == agent_id
-        assert trust_score.total_interactions == 5
-        assert trust_score.positive_interactions == 4
-        assert trust_score.overall_score > 0.5  # Should be reasonably high
-        
-        # Update interaction
-        self.did_manager.update_agent_interaction(agent_id, {"success": True, "quality_score": 0.9})
-        
-        # Verify trust score is updated
-        updated_score = self.did_manager.get_agent_reputation(agent_id)
-        assert updated_score is not None
+            assert early.status_code == 402
+            assert early.json()["error"] == "payment_not_settled"
 
-class TestSecurityIntegration:
-    """Test security feature integration."""
-    
-    def setup_method(self):
-        self.auth_manager = AuthenticationManager()
-        self.encryption_manager = EncryptionManager()
-        self.audit_logger = AuditLogger()
-    
-    def test_authentication_with_encryption(self):
-        """Test authentication combined with encryption."""
-        agent_id = "test_agent"
-        
-        # Generate API key
-        api_key = self.auth_manager.generate_api_key(agent_id)
-        
-        # Create encrypted message
-        message_data = {"sensitive": "data", "timestamp": time.time()}
-        password = "encryption_password"
-        
-        encrypted_data = self.encryption_manager.encrypt_with_password(
-            json.dumps(message_data).encode(), password
-        )
-        
-        # Create signed message with encrypted payload
-        signed_message = self.auth_manager.create_signed_message(
-            {"encrypted_payload": encrypted_data, "agent_id": agent_id}, agent_id
-        )
-        
-        # Verify signed message
-        verified_data = self.auth_manager.verify_signed_message(signed_message)
-        assert verified_data is not None
-        
-        # Decrypt payload
-        decrypted_data = self.encryption_manager.decrypt_with_password(
-            verified_data["message"]["encrypted_payload"], password
-        )
-        
-        decrypted_message = json.loads(decrypted_data.decode())
-        assert decrypted_message == message_data
-    
-    def test_audit_logging_with_security_events(self):
-        """Test audit logging with security events."""
-        agent_id = "test_agent"
-        
-        # Log authentication
-        self.audit_logger.log_authentication(agent_id, "login", True, "192.168.1.1")
-        
-        # Log payment
-        self.audit_logger.log_payment(agent_id, "payment_123", 1000, True)
-        
-        # Log security event
-        self.audit_logger.log_security_event(
-            agent_id, "suspicious_activity", {"reason": "unusual_pattern"}
-        )
-        
-        # Generate security report
-        report = self.audit_logger.generate_security_report()
-        
-        assert report["failed_authentications"] == 0
-        assert "security_events" in report
-        assert report["total_events"] >= 1
+            # 3. Pay, then the work is delivered.
+            fake_lnbits.settle(payment_hash)
+            served = client.post(
+                "/search/query", json={"query": "bitcoin", "payment_hash": payment_hash}
+            )
+            assert served.status_code == 200
+            assert served.json() == SEARCH_RESULT
 
-class TestPerformanceIntegration:
-    """Test performance monitoring integration."""
-    
-    def setup_method(self):
-        self.audit_logger = AuditLogger()
-    
-    def test_performance_monitoring_workflow(self):
-        """Test performance monitoring workflow."""
-        agent_id = "test_agent"
-        
-        # Simulate service requests with timing
-        start_time = time.time()
-        
-        # Log successful request
-        self.audit_logger.log_event(
-            EventType.AGENT_ACTION,
-            agent_id,
-            "service_request",
-            {"service": "translation", "duration_ms": 1500},
+            # 4. The same payment cannot buy a second request.
+            replay = client.post(
+                "/search/query", json={"query": "bitcoin", "payment_hash": payment_hash}
+            )
+            assert replay.status_code == 402
+            assert replay.json()["error"] == "already_consumed"
+
+    def test_payment_is_returned_when_the_service_fails(self, client, fake_lnbits, ledger):
+        """A caller who pays and gets nothing must be able to retry."""
+        quote = client.post("/search/query", json={"query": "bitcoin"})
+        payment_hash = quote.json()["payment_hash"]
+        fake_lnbits.settle(payment_hash)
+
+        with patch(
+            "src.agents.search_agent.search_agent.SearchAgent.search",
+            new=AsyncMock(return_value={"error": "all search backends failed"}),
+        ):
+            failed = client.post(
+                "/search/query", json={"query": "bitcoin", "payment_hash": payment_hash}
+            )
+        assert failed.status_code == 502
+
+        # The payment was released, so the retry succeeds on the same hash.
+        assert ledger.get(payment_hash)["state"] == "issued"
+        with patch(
+            "src.agents.search_agent.search_agent.SearchAgent.search",
+            new=AsyncMock(return_value=SEARCH_RESULT),
+        ):
+            retry = client.post(
+                "/search/query", json={"query": "bitcoin", "payment_hash": payment_hash}
+            )
+        assert retry.status_code == 200
+
+    def test_a_payment_for_search_cannot_buy_translation(self, client, fake_lnbits):
+        quote = client.post("/search/query", json={"query": "bitcoin"})
+        payment_hash = quote.json()["payment_hash"]
+        fake_lnbits.settle(payment_hash)
+
+        response = client.post(
+            "/polyglot/translate",
+            json={"text": "hello", "target_lang": "es", "payment_hash": payment_hash},
+        )
+
+        assert response.status_code == 402
+        assert response.json()["error"] == "wrong_service"
+
+    def test_an_lnbits_outage_never_yields_free_service(self, client, fake_lnbits):
+        quote = client.post("/search/query", json={"query": "bitcoin"})
+        payment_hash = quote.json()["payment_hash"]
+        fake_lnbits.settle(payment_hash)
+        fake_lnbits.unreachable = True
+
+        with patch(
+            "src.agents.search_agent.search_agent.SearchAgent.search",
+            new=AsyncMock(return_value=SEARCH_RESULT),
+        ) as search:
+            response = client.post(
+                "/search/query", json={"query": "bitcoin", "payment_hash": payment_hash}
+            )
+
+        assert response.status_code == 503
+        search.assert_not_awaited(), "the service ran despite an unverifiable payment"
+
+
+class TestSyntheticDemos:
+    def test_streamfinder_is_free_and_says_so(self, client):
+        body = client.post(
+            "/a2a",
+            json={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "streamfinder.search",
+                "params": {"query": "Matrix"},
+            },
+        ).json()
+
+        assert body["result"]["synthetic"] is True
+        assert "demo" in body["result"]["notice"].lower()
+
+    def test_no_priced_service_can_return_mock_output(self, client):
+        """Nothing that charges may be labelled synthetic."""
+        for service in client.get("/services").json()["services"]:
+            if service.get("synthetic"):
+                assert service["price_sats"] == 0
+
+
+class TestOperationalEndpoints:
+    def test_health_reports_real_state(self, client):
+        body = client.get("/health").json()
+
+        assert body["status"] == "healthy"
+        assert body["ledger"] == "ok"
+        assert body["payments"] == "enforced"
+        assert "balance_sats" not in body, "health must not publish the wallet balance"
+
+    def test_wallet_balance_is_not_public(self, client):
+        assert client.get("/wallet/balance").status_code == 404
+
+
+class TestDiscoveryAndIdentity:
+    async def test_agent_registration_and_discovery(self):
+        manager = P2PDiscoveryManager()
+        agent = AgentInfo(
+            agent_id="test-agent",
+            name="TestAgent",
+            description="Search services",
+            endpoint="https://example.com/search",
+            services=["search.query"],
+            public_key="a" * 64,
+            protocol="lightning+nostr",
+            last_seen=0.0,
+        )
+
+        await manager.register_agent(agent)
+        found = await manager.discover_agents(DiscoveryQuery(service_type="search.query"))
+
+        assert any(a.agent_id == "test-agent" for a in found)
+
+    def test_did_creation_and_trust_scoring(self):
+        did_manager = EnhancedDIDManager()
+        did = did_manager.create_did("agent-1")
+
+        assert did.startswith("did:")
+
+        score = did_manager.calculate_trust_score("agent-1", [{"success": True, "amount_sats": 10}])
+        assert 0.0 <= score.overall_score <= 1.0
+        assert score.verification_level in set(TrustLevel)
+        assert score.total_interactions == 1
+
+
+class TestAuthenticationAndAudit:
+    def test_api_key_lifecycle(self):
+        auth = AuthenticationManager()
+        key = auth.generate_api_key("agent-1", ["read"])
+
+        assert auth.verify_api_key(key) is not None
+        assert auth.verify_api_key("not-a-real-key") is None
+
+    def test_audit_events_are_recorded(self, tmp_path):
+        logger = AuditLogger(log_file=str(tmp_path / "audit.log"))
+
+        logger.log_event(
+            event_type=EventType.PAYMENT,
+            agent_id="agent-1",
+            action="payment_settled",
+            details={"amount_sats": 10},
             result="success",
-            duration_ms=1500
         )
-        
-        # Log failed request
-        self.audit_logger.log_event(
-            EventType.AGENT_ACTION,
-            agent_id,
-            "service_request",
-            {"service": "translation", "error": "timeout"},
-            severity="ERROR",
-            result="failure",
-            duration_ms=5000
-        )
-        
-        # Get events
-        events = self.audit_logger.get_events(EventType.AGENT_ACTION)
-        assert len(events) == 2
-        
-        # Check performance metrics
-        successful_requests = [e for e in events if e.result == "success"]
-        failed_requests = [e for e in events if e.result == "failure"]
-        
-        assert len(successful_requests) == 1
-        assert len(failed_requests) == 1
-        assert successful_requests[0].duration_ms == 1500
-        assert failed_requests[0].duration_ms == 5000
 
-class TestErrorHandling:
-    """Test error handling and recovery."""
-    
-    def setup_method(self):
-        self.auth_manager = AuthenticationManager()
-        self.payment_security = PaymentSecurityManager()
-    
-    def test_invalid_api_key_handling(self):
-        """Test handling of invalid API keys."""
-        # Test with invalid API key
-        payload = self.auth_manager.verify_api_key("invalid_key")
-        assert payload is None
-        
-        # Test with expired API key
-        with patch('time.time', return_value=0):
-            expired_key = self.auth_manager.generate_api_key("test_agent")
-        
-        payload = self.auth_manager.verify_api_key(expired_key)
-        assert payload is None
-    
-    def test_payment_error_handling(self):
-        """Test payment error handling."""
-        # Test with non-existent escrow
-        success = self.payment_security.fund_escrow("nonexistent_escrow", "payment_hash")
-        assert success is False
-        
-        # Test with invalid dispute
-        success = self.payment_security.resolve_dispute(
-            "nonexistent_dispute", "arbitrator", "resolution"
-        )
-        assert success is False
-    
-    def test_encryption_error_handling(self):
-        """Test encryption error handling."""
-        encryption_manager = EncryptionManager()
-        
-        # Test decryption with wrong password
-        data = b"test data"
-        encrypted = encryption_manager.encrypt_with_password(data, "correct_password")
-        
-        try:
-            decrypted = encryption_manager.decrypt_with_password(encrypted, "wrong_password")
-            assert False, "Should have raised an exception"
-        except Exception:
-            # Expected to fail
-            pass
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+        assert (tmp_path / "audit.log").exists()

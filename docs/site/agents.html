@@ -298,16 +298,16 @@ POST /a2a
       <h2>📡 StreamfinderAgent</h2>
       <div class="meta">
         <span class="tag tag-status">● live</span>
-        <span class="tag tag-price">100 sats</span>
+        <span class="tag tag-price">free — demo data</span>
         <span class="tag tag-a2a">A2A only</span>
       </div>
     </div>
-    <p class="agent-desc">The reference implementation of the Agent-to-Agent JSON-RPC pattern. Provides a <code>streamfinder.search</code> method that can be optionally gated behind NIP-05 identity verification and trust scoring.</p>
+    <p class="agent-desc">The reference implementation of the Agent-to-Agent JSON-RPC pattern. Provides a <code>streamfinder.search</code> method that can be optionally gated behind NIP-05 identity verification and trust scoring. <strong>It answers from a fixed three-title demo dataset, not a real streaming availability API</strong> — so it is free, and every response is labelled <code>synthetic</code>.</p>
     <div class="detail-grid">
       <div class="detail-block">
         <h4>A2A method</h4>
         <ul>
-          <li>streamfinder.search — query stream DB</li>
+          <li>streamfinder.search — query the demo dataset</li>
           <li>Optional identity trust gate</li>
           <li>Requires requester_pubkey when gate active</li>
         </ul>

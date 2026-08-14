@@ -3,7 +3,7 @@
     "bitagent": {
       "type": "stdio",
       "command": "python",
-      "args": ["/home/charlie/bitagent/mcp_server.py"],
+      "args": ["./mcp_server.py"],
       "env": {}
     }
   }
