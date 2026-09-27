@@ -30,6 +30,13 @@ from src.api.middleware import (
     RateLimitMiddleware,
     RequestContextMiddleware,
 )
+from src.network.discovery_config import (
+    DiscoveryConfig,
+    DiscoveryConfigError,
+    DiscoveryDisabledError,
+    DiscoveryUnavailableError,
+    load_discovery_config,
+)
 from src.network.registry_router import router as registry_router
 from src.payments import (
     AsyncLNbitsClient,
@@ -59,6 +66,7 @@ LEDGER_PURGE_INTERVAL_SECONDS = 3600
 
 streamfinder_agent: StreamfinderAgent | None = None
 payment_config = None
+discovery_config: DiscoveryConfig | None = None
 payment_ledger: PaymentLedger | None = None
 lnbits_client: AsyncLNbitsClient | None = None
 _background_tasks: set[asyncio.Task] = set()
@@ -71,26 +79,26 @@ def _spawn(coro) -> None:
     task.add_done_callback(_background_tasks.discard)
 
 
-def _build_base_url() -> str:
-    if domain := os.getenv("RAILWAY_PUBLIC_DOMAIN"):
-        return f"https://{domain}"
-    return os.getenv("PUBLIC_URL", "http://localhost:8000")
-
-
 def _resolve_cors_origins() -> list[str]:
     raw = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:8000")
     origins = [o.strip() for o in raw.split(",") if o.strip()]
     if "*" in origins and len(origins) > 1:
         logger.warning("ALLOWED_ORIGINS contains '*' alongside specific origins; using '*' only")
         return ["*"]
+    if not origins:
+        logger.info(
+            "ALLOWED_ORIGINS is empty; no cross-origin browser request is allowed. "
+            "Same-origin use of the API and /docs is unaffected."
+        )
     return origins
 
 
-async def _broadcast_agents(base_url: str, nostr_private_key: str | None) -> None:
+async def _broadcast_agents(config: DiscoveryConfig) -> None:
     try:
         from src.network.p2p_discovery import AgentInfo, get_discovery_manager
 
-        manager = get_discovery_manager(nostr_private_key)
+        base_url = config.public_url
+        manager = get_discovery_manager(config)
         pubkey = manager.nostr_discovery.public_key.hex()
 
         def describe(prefix: str) -> str:
@@ -171,7 +179,13 @@ async def _broadcast_agents(base_url: str, nostr_private_key: str | None) -> Non
             await manager.register_agent(agent_info)
 
         logger.info("Broadcasted %d agents to Nostr relays", len(agents))
+    except (DiscoveryConfigError, DiscoveryDisabledError, DiscoveryUnavailableError):
+        # Startup's preflight is where these belong. Swallowing one here would turn
+        # a misconfigured node into a quietly silent one.
+        raise
     except Exception as e:
+        # Relay reachability is transient by nature, and a warning is the right
+        # weight for it.
         logger.warning("Nostr agent broadcast failed: %s", e)
 
 
@@ -217,8 +231,28 @@ async def lifespan(app: FastAPI):
         )
 
     _spawn(_purge_ledger_periodically(payment_ledger))
-    _spawn(_broadcast_agents(_build_base_url(), os.getenv("NOSTR_PRIVATE_KEY")))
-    logger.info("Nostr broadcast scheduled for %s", _build_base_url())
+
+    if discovery_config.enabled:
+        # Prove the identity can be built before startup completes. Doing this in
+        # the background task instead would let a node advertise itself as running
+        # while every announcement failed in a log line nobody reads. This opens no
+        # socket; see preflight_discovery.
+        from src.network.p2p_discovery import preflight_discovery
+
+        try:
+            preflight_discovery(discovery_config)
+        except (DiscoveryConfigError, DiscoveryUnavailableError) as exc:
+            logger.critical("Refusing to start: %s", exc)
+            raise
+
+        _spawn(_broadcast_agents(discovery_config))
+        logger.info("Nostr broadcast scheduled for %s", discovery_config.public_url)
+    else:
+        logger.info(
+            "Public discovery is disabled: no Nostr identity, relay connection, DHT "
+            "traffic or agent announcement is created. Set NOSTR_DISCOVERY_ENABLED=true, "
+            "with NOSTR_PRIVATE_KEY and PUBLIC_URL, to opt in."
+        )
 
     yield
 
@@ -235,6 +269,15 @@ async def lifespan(app: FastAPI):
 try:
     payment_config = load_config()
 except PaymentConfigError as exc:
+    logger.critical("Refusing to start: %s", exc)
+    raise SystemExit(1) from exc
+
+# Discovery is resolved here for the same reason, and before any socket is
+# opened: a node that has been told to announce itself publicly but cannot do so
+# with a stable identity and a reachable URL must fail, not improvise.
+try:
+    discovery_config = load_discovery_config()
+except DiscoveryConfigError as exc:
     logger.critical("Refusing to start: %s", exc)
     raise SystemExit(1) from exc
 

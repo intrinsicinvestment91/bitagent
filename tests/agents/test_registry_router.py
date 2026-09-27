@@ -14,7 +14,10 @@ from httpx import ASGITransport, AsyncClient
 from main import app
 from src.network.p2p_discovery import AgentInfo
 
-_GET_MGR = "src.network.registry_router.get_discovery_manager"
+# The registry reads an already-existing manager and never creates one, so this
+# is the accessor the routes call. Creating one is covered in
+# tests/network/test_discovery_startup.py.
+_GET_MGR = "src.network.registry_router.existing_discovery_manager"
 
 
 def _make_agent(agent_id: str, services: list[str], score: float = 0.0) -> AgentInfo:
@@ -57,7 +60,8 @@ class TestRegistryList:
         assert body["count"] == 0
         assert body["total"] == 0
         assert body["agents"] == []
-        assert body["source"] == "local"
+        # Public discovery is disabled across the suite, and the label says so.
+        assert body["source"] == "disabled"
 
     async def test_returns_all_agents(self, client):
         agents = [_make_agent("search", ["search.query"]), _make_agent("oracle", ["price"])]

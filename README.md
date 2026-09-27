@@ -229,7 +229,9 @@ dispatcher, so a new service cannot quietly ship without a price.
 | `RATE_LIMIT` | `true` | Per-IP rate limiting |
 | `MAX_BODY_BYTES` | `1048576` | Request body cap |
 | `BRAVE_API_KEY`, `SEARXNG_URL` | — | Preferred search backends; falls back to DuckDuckGo |
-| `NOSTR_PRIVATE_KEY` | — | 64-hex key for a stable Nostr identity across restarts |
+| `NOSTR_DISCOVERY_ENABLED` | `false` | Opt in to public Nostr announcements. While `false` the node opens no relay connection and creates no Nostr identity |
+| `NOSTR_PRIVATE_KEY` | — | 64-hex key giving a stable Nostr identity. **Required** when discovery is enabled — there is no ephemeral fallback on the startup path |
+| `PUBLIC_URL` | — | The address callers reach this node at. **Required** when discovery is enabled, and cannot be localhost |
 | `FEDIMINT_CLIENTD_URL`, `FEDIMINT_CLIENTD_PASSWORD` | — | Enables ecash as a second payment path |
 | `IDENTITY_REQUIRE_FOR_PAID_SERVICES` | `false` | Require a trusted NIP-05 identity on streamfinder |
 
@@ -257,6 +259,11 @@ docker compose -f docker-compose.dev.yml up
 ```
 
 **Self-hosted (Start9):** see [`docs/START9_DEPLOYMENT_GUIDE.md`](docs/START9_DEPLOYMENT_GUIDE.md).
+The StartOS package ships **private LAN-only free mode**: payments off, public Nostr discovery off,
+no LNbits credentials or Nostr key needed, LAN interface only (no Tor), and no wildcard CORS origin.
+Enabling either feature requires its configuration to be complete or the node refuses to start.
+Do not enter real credentials during this milestone.
+
 `start9_server.py` is preserved as-is and still uses the legacy wallet, which does **not** enforce
 single-use payments. Do not expose it publicly as a paid node until it is migrated onto the payment
 gate.

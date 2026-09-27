@@ -25,10 +25,15 @@ main:
   mounts:
     main: /data
   environment:
+    PAYMENTS_ENABLED: "{{ config.payments_enabled }}"
+    NOSTR_DISCOVERY_ENABLED: "{{ config.nostr_discovery_enabled }}"
     LNBITS_URL: "{{ config.lnbits_url }}"
     LNBITS_API_KEY: "{{ config.lnbits_api_key }}"
     NOSTR_PRIVATE_KEY: "{{ config.nostr_private_key }}"
-    ALLOWED_ORIGINS: "*"
+    PUBLIC_URL: "{{ config.public_url }}"
+    # Empty means no cross-origin browser request is allowed. The API and /docs
+    # are same-origin, so they keep working; this was "*".
+    ALLOWED_ORIGINS: ""
     HOST: "0.0.0.0"
     PORT: "8000"
     DATABASE_URL: "sqlite:////data/bitagent.db"
@@ -41,14 +46,13 @@ hardware-requirements:
 interfaces:
   main:
     name: "BitAgent API"
-    description: "BitAgent HTTP API — Lightning-gated AI agent endpoints"
+    description: "BitAgent HTTP API — reachable on the local network only"
     ui: true
     protocols:
       - tcp
       - http
-    tor-config:
-      port-mapping:
-        8000: "8000"
+    # LAN only for this milestone. There is deliberately no tor-config: the node
+    # runs in private free mode and is not meant to be reachable off the LAN.
     lan-config:
       8000:
         ssl: false
