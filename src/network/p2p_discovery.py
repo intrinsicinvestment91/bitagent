@@ -16,6 +16,14 @@ from enum import Enum
 
 import aiohttp
 
+from src.network.discovery_config import (
+    DiscoveryConfig,
+    DiscoveryDisabledError,
+    DiscoveryUnavailableError,
+    load_discovery_config,
+    validate_discovery_config,
+)
+
 logger = logging.getLogger(__name__)
 
 # Nostr imports (optional dependency).
@@ -239,7 +247,15 @@ class DHTNode:
 class EnhancedNostrDiscovery:
     """Enhanced Nostr-based agent discovery with filtering and reputation."""
 
-    def __init__(self, private_key: str = None):
+    def __init__(self, private_key: str = None, *, allow_ephemeral_fallback: bool = True):
+        """Build a Nostr identity.
+
+        ``allow_ephemeral_fallback`` defaults to True, which is the long-standing
+        behaviour for direct use: a missing or unusable key yields a throwaway
+        identity. The production accessor passes False, because a node that was
+        told to announce itself under a specific key must not announce itself
+        under some other one instead.
+        """
         if not NOSTR_AVAILABLE:
             raise RuntimeError(f"Nostr dependencies unavailable: {NOSTR_IMPORT_ERROR}")
 
@@ -250,22 +266,28 @@ class EnhancedNostrDiscovery:
                     "Nostr: persistent identity loaded (pubkey %s...)",
                     self.private_key.public_key.hex()[:16],
                 )
-            except Exception as e:
+            except Exception:
+                if not allow_ephemeral_fallback:
+                    # Neither logged nor replaced: this exception was handed the
+                    # private key and may quote it, so only the caller that can
+                    # sanitize it gets to see it.
+                    raise
                 logger.warning(
-                    "Nostr: NOSTR_PRIVATE_KEY is invalid (%s) — falling back to ephemeral identity",
-                    e,
+                    "Nostr: NOSTR_PRIVATE_KEY is invalid — falling back to ephemeral identity",
                 )
                 self.private_key = PrivateKey()
                 logger.info(
                     "Nostr: ephemeral identity active (pubkey %s...)",
                     self.private_key.public_key.hex()[:16],
                 )
-        else:
+        elif allow_ephemeral_fallback:
             self.private_key = PrivateKey()
             logger.info(
                 "Nostr: NOSTR_PRIVATE_KEY not set — ephemeral identity active (pubkey %s...)",
                 self.private_key.public_key.hex()[:16],
             )
+        else:
+            raise ValueError("a private key is required when ephemeral fallback is disabled")
 
         self.public_key = self.private_key.public_key
         self.agent_cache = {}
@@ -417,9 +439,13 @@ class EnhancedNostrDiscovery:
 class P2PDiscoveryManager:
     """Main discovery manager coordinating multiple discovery protocols."""
 
-    def __init__(self, private_key: str = None):
+    def __init__(self, private_key: str = None, *, allow_ephemeral_fallback: bool = True):
         self.dht_node = DHTNode()
-        self.nostr_discovery = EnhancedNostrDiscovery(private_key) if NOSTR_AVAILABLE else None
+        self.nostr_discovery = (
+            EnhancedNostrDiscovery(private_key, allow_ephemeral_fallback=allow_ephemeral_fallback)
+            if NOSTR_AVAILABLE
+            else None
+        )
         self.discovered_agents = {}
         self.discovery_protocols = [DiscoveryProtocol.DHT]
         if NOSTR_AVAILABLE:
@@ -495,16 +521,101 @@ class P2PDiscoveryManager:
 
 # ---------------------------------------------------------------------------
 # Module-level singleton — one shared manager for the process lifetime.
-# Lazily constructed: building the Nostr identity is not free, and a node
-# with no relays configured should still start.
+# Constructing it mints a Nostr identity and every register_agent() call
+# publishes to public relays, so the production accessor refuses to build one
+# unless discovery has been explicitly enabled and validated.
 # ---------------------------------------------------------------------------
 
 _manager: P2PDiscoveryManager | None = None
 
 
-def get_discovery_manager(private_key: str | None = None) -> P2PDiscoveryManager:
-    """Return the process-wide P2PDiscoveryManager, creating it on first call."""
+def get_discovery_manager(config: DiscoveryConfig | None = None) -> P2PDiscoveryManager:
+    """Return the process-wide P2PDiscoveryManager, creating it on first call.
+
+    Every config passes through validate_discovery_config() — including one built
+    directly by a caller — so this accessor holds no key or URL validation of its
+    own. What it does add is a runtime check on the identity it just built:
+    EnhancedNostrDiscovery falls back to a throwaway key by default, so strict
+    mode is requested here and the resulting secret is compared with the
+    configured one before the singleton is published. A node told to announce
+    itself under one key must never announce itself under another.
+    """
     global _manager
-    if _manager is None:
-        _manager = P2PDiscoveryManager(private_key)
+    resolved = load_discovery_config() if config is None else validate_discovery_config(config)
+    if not resolved.enabled:
+        raise DiscoveryDisabledError(
+            "Public discovery is disabled. Set NOSTR_DISCOVERY_ENABLED=true, with a "
+            "persistent NOSTR_PRIVATE_KEY and a routable PUBLIC_URL, to opt in."
+        )
+    if _manager is not None:
+        return _manager
+
+    if not NOSTR_AVAILABLE:
+        raise DiscoveryUnavailableError(
+            f"Public discovery is enabled but Nostr support is unavailable: {NOSTR_IMPORT_ERROR}"
+        )
+
+    try:
+        candidate = P2PDiscoveryManager(resolved.nostr_private_key, allow_ephemeral_fallback=False)
+    except Exception:
+        # `from None`, and no detail: the failing constructor was handed the
+        # private key, so neither its message nor its traceback may be rendered
+        # into a log or an HTTP response.
+        raise DiscoveryUnavailableError(
+            "Public discovery is enabled but the configured Nostr identity could not be "
+            "constructed. The underlying error is withheld because it may quote the key."
+        ) from None
+
+    identity = candidate.nostr_discovery
+    if identity is None:
+        raise DiscoveryUnavailableError(
+            "Public discovery is enabled but the discovery manager has no Nostr identity"
+        )
+    try:
+        constructed = identity.private_key.raw_secret.hex().lower()
+    except Exception:
+        raise DiscoveryUnavailableError(
+            "Public discovery is enabled but the constructed Nostr identity could not be "
+            "read. The underlying error is withheld because it may quote the key."
+        ) from None
+    if constructed != resolved.nostr_private_key:
+        raise DiscoveryUnavailableError(
+            "The constructed Nostr identity does not match the configured key; "
+            "refusing to announce this node under an identity it was not given."
+        )
+
+    _manager = candidate
     return _manager
+
+
+def preflight_discovery(config: DiscoveryConfig) -> P2PDiscoveryManager:
+    """Prove at startup that this node can announce itself, synchronously.
+
+    Delegates to get_discovery_manager(), which is the strict path: ephemeral
+    fallback disabled, construction failures sanitized, and the built identity
+    verified against the configured key before the singleton is published.
+
+    Opens nothing. P2PDiscoveryManager builds a DHTNode (a hashed random id and
+    three empty containers) and an EnhancedNostrDiscovery (a private key and a
+    static list of relay URLs). The first socket is opened by register_agent() or
+    discover_agents(), both async, neither called here. So a node told to announce
+    itself finds out now, rather than later in a background task whose failure
+    nobody reads.
+    """
+    manager = get_discovery_manager(config)
+    if manager.nostr_discovery is None:
+        raise DiscoveryUnavailableError(
+            "Public discovery is enabled but the discovery manager has no Nostr identity"
+        )
+    return manager
+
+
+def existing_discovery_manager() -> P2PDiscoveryManager | None:
+    """Return the manager only if one already exists. Never creates one."""
+    return _manager
+
+
+def reset_discovery_manager() -> None:
+    """Drop the singleton. For tests; nothing in the application calls this."""
+    global _manager
+    _manager = None

@@ -1,16 +1,24 @@
 # BitAgent
 
-BitAgent is a Lightning-enabled AI agent framework. Agents accept Bitcoin Lightning payments via LNbits and are discoverable via Nostr.
+BitAgent is a Lightning-enabled AI agent framework. Agents can accept Bitcoin Lightning payments via LNbits and can announce themselves over Nostr — both are switched off by default.
 
 ## Setup
 
-After installing, go to **Config** and fill in:
+This package installs in **private free mode**, reachable on your local network only. Nothing needs to be filled in: every service is free and labelled free, and no Nostr connection is made. Leave it this way unless you have decided otherwise.
 
-- **LNbits URL** — the URL of your LNbits instance. If LNbits is installed on this Start9 server, use `http://lnbits.embassy`.
-- **LNbits Admin API Key** — find this in LNbits → your wallet → API info → Admin key.
-- **Nostr Private Key** (optional) — 64-char hex private key. Leave blank to disable Nostr broadcasting.
+**Do not enter real credentials during this milestone.**
+
+Under **Config**:
+
+- **Enable Lightning payments** — off by default, so no LNbits wallet is needed. If you turn it on, the LNbits fields below become required and the service refuses to start without them.
+- **LNbits URL** and **LNbits Admin API Key** — needed only when payments are enabled. If LNbits runs on this server, its URL is `http://lnbits.embassy`; the admin key is in LNbits → your wallet → API info.
+- **Enable public Nostr discovery** — off by default, and while off this service opens no relay connections, publishes no announcements and creates no Nostr identity. Turning it on announces this agent publicly.
+- **Nostr Private Key** — needed only when discovery is enabled, where it is required: 64 hex characters, giving the node a stable identity across restarts.
+- **Public URL** — needed only when discovery is enabled: the address callers outside this machine use. It cannot be localhost.
 
 ## Agents
+
+These prices apply only once Lightning payments are enabled. In the default free mode every service below is free.
 
 | Endpoint | Service | Price |
 |---|---|---|

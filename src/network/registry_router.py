@@ -16,7 +16,8 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
-from src.network.p2p_discovery import get_discovery_manager
+from src.network.discovery_config import discovery_enabled
+from src.network.p2p_discovery import existing_discovery_manager
 
 router = APIRouter(tags=["AgentRegistry"])
 
@@ -69,7 +70,13 @@ class RegistryListResponse(BaseModel):
     total: int = Field(..., description="Total matching agents before pagination")
     offset: int = Field(..., description="Offset used for this page")
     limit: int = Field(..., description="Limit used for this page")
-    source: str = Field(default="local", description="Data source (always 'local' for now)")
+    source: str = Field(
+        default="local",
+        description=(
+            "'local' for this node's own records, or 'disabled' when public "
+            "discovery is switched off and no records can be gathered"
+        ),
+    )
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -138,8 +145,10 @@ async def list_agents(
 ) -> JSONResponse:
     service = _validate_service(service)
 
-    manager = get_discovery_manager()
-    all_agents = list(manager.discovered_agents.values())
+    # Reading the registry must never be the thing that starts public discovery,
+    # so this takes the manager only if one already exists.
+    manager = existing_discovery_manager()
+    all_agents = list(manager.discovered_agents.values()) if manager else []
 
     if service:
         all_agents = [a for a in all_agents if service in a.services]
@@ -153,7 +162,7 @@ async def list_agents(
         total=total,
         offset=offset,
         limit=limit,
-        source="local",
+        source="local" if discovery_enabled() else "disabled",
     )
     return _cached_json(body.model_dump())
 
@@ -166,8 +175,8 @@ async def list_agents(
     responses={404: {"description": "Agent not found"}},
 )
 async def get_agent(agent_id: str) -> JSONResponse:
-    manager = get_discovery_manager()
-    agent = manager.discovered_agents.get(agent_id)
+    manager = existing_discovery_manager()
+    agent = manager.discovered_agents.get(agent_id) if manager else None
     if agent is None:
         raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found")
     entry = AgentEntry(**asdict(agent))

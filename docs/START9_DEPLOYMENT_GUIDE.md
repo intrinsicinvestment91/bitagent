@@ -1,5 +1,69 @@
 # BitAgent Start9 Server Deployment Guide
 
+## Private free mode (current milestone)
+
+The StartOS package in this repository (`manifest.yaml`, `scripts/procedures/`) installs into
+**private LAN-only free mode**. This is the first private milestone: the node is not published to
+the internet and has nothing at stake. "LAN-only" means reachable from your local network — any
+device or person with access to that network can reach it, so it is not the same as private to you.
+
+What the defaults mean:
+
+| Setting | Default | Effect |
+|---|---|---|
+| Enable Lightning payments | off | Every service is free and labelled free in `/health` and `/services`. No LNbits wallet is needed |
+| Enable public Nostr discovery | off | No relay connection, no announcement, no DHT traffic, and no Nostr identity is created at all |
+| LNbits URL / Admin API Key | empty | Required **only** if you turn payments on |
+| Nostr Private Key | empty | Used **only** if you turn discovery on, where it is required |
+| Public URL | empty | Required **only** if you turn discovery on |
+
+Access and exposure:
+
+- **LAN only.** The package deliberately declares no Tor interface for this milestone.
+- `ALLOWED_ORIGINS` is empty, so no cross-origin browser request is allowed. The API and `/docs`
+  are same-origin and unaffected.
+
+Turning something on is an explicit, complete act:
+
+- Payments on with LNbits fields empty → the node **refuses to start**. It never comes up serving
+  paid services for free.
+- Discovery on without a persistent 64-hex Nostr key, or without a public URL that is not
+  localhost → the node **refuses to start**, before it opens any connection. It does not fall back
+  to a throwaway identity.
+
+**Do not enter real credentials during this milestone.** No LNbits key, no funded wallet, no Nostr
+key you use elsewhere. Leave both switches off and treat the node as a private test surface.
+
+### Required install smoke-test gate (not yet done)
+
+The application side of private free mode is implemented and tested, but **nothing here has been
+validated on a real StartOS install** — no `.s9pk` has been built and nothing has been installed.
+The two switches are declared as `boolean` config fields and reach the container through
+`manifest.yaml` as environment strings, and the exact literal StartOS renders is what decides
+behaviour. Confirm all of this on the first install, before trusting the defaults:
+
+1. With both switches off, `PAYMENTS_ENABLED` and `NOSTR_DISCOVERY_ENABLED` inside the service are
+   the literal string `false`. Read them from the service's own logs in the StartOS UI, or from a
+   shell attached to the service through StartOS (`start-cli package attach`/service shell) — this
+   package is operated through StartOS, not through Docker directly.
+2. With a switch on, the value is the literal `true`.
+3. The startup log contains `Public discovery is disabled` exactly once, and no
+   `Nostr broadcast scheduled` line.
+4. `/health` reports `"payments": "disabled"`.
+
+How the code behaves if a rendering surprises us:
+
+- `NOSTR_DISCOVERY_ENABLED` set to anything unrecognised → discovery stays **disabled** and a
+  warning is logged. Safe.
+- `PAYMENTS_ENABLED` empty or absent while no LNbits credentials are set → the node **refuses to
+  start**. Safe, but the node will not come up, so check 1 above rather than discovering it here.
+- `PAYMENTS_ENABLED` unrecognised → treated as off, i.e. free service. This is the one case that
+  fails quietly in the wrong direction for a paid node, which is why check 2 matters before
+  payments are ever enabled.
+
+The rest of this document is older material about building and running on Start9; it describes
+`start9_server.py`, which still uses the legacy wallet and does not enforce single-use payments.
+
 ## 🚀 **Deploying to Start9 Server**
 
 ### **1. Prepare Your Start9 Server**
